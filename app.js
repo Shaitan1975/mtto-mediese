@@ -240,22 +240,32 @@ const App = (() => {
         abrirDropdown();
         return;
       }
+      
       lista.forEach(item => {
         const div = document.createElement("div");
         div.className = "buscador-item";
         div.innerHTML = opts.renderItem(item);
-        // Usar mousedown en vez de click para que se ejecute antes del blur del input
-        div.addEventListener("mousedown", (ev) => {
-          ev.preventDefault(); // evita que el input pierda el foco antes de procesar
+
+        // Función que se ejecuta al seleccionar (compartida por varios eventos)
+        const seleccionar = (ev) => {
+          if (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+          }
           seleccionado = item;
           input.value = opts.renderSeleccion ? opts.renderSeleccion(item) : (item.codigo || "");
           cerrarDropdown();
           if (opts.onSelect) opts.onSelect(item);
-        });
+        };
+
+        // Escuchar múltiples eventos para cubrir mouse, touch y pointer
+        div.addEventListener("mousedown", seleccionar);
+        div.addEventListener("touchstart", seleccionar, { passive: false });
+        div.addEventListener("pointerdown", seleccionar);
+        div.addEventListener("click", seleccionar);
+
         dropdown.appendChild(div);
       });
-      abrirDropdown();
-    }
 
     // ─── Manejo de escritura ───
     async function manejarInput() {
