@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════
 
 const CONFIG = {
-  APPS_SCRIPT_URL: "PEGAR_AQUI_LA_URL_DEL_DEPLOY",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwGB71s8Ip9cQIo7sv0tPzKaEe7CAaxQ1Wn5pqz4MVGu4vN10VbEUMBcZoir-TfuyKwdg/exec",
   SESSION_KEY: "mtto_mediese_session",
   ITERACIONES: 100000
 };
