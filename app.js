@@ -189,7 +189,7 @@ const App = (() => {
   // BUSCADOR TYPEAHEAD
   // ═══════════════════════════════════════════════════════════════
 
-  function crearBuscador(opts) {
+    function crearBuscador(opts) {
     const wrapper = document.createElement("div");
     wrapper.className = "buscador-wrapper";
 
@@ -207,7 +207,6 @@ const App = (() => {
     wrapper.appendChild(input);
     wrapper.appendChild(dropdown);
 
-    let datos = [];
     let seleccionado = null;
     let dropdownAbierto = false;
 
@@ -221,25 +220,34 @@ const App = (() => {
       dropdownAbierto = false;
     }
 
-    async function cargarDatos() {
-      if (datos.length === 0) {
-        datos = await opts.obtenerDatos();
-      }
-      return datos;
-    }
-
-    function renderResultados(query) {
+    async function renderResultados(query) {
       if (!query || query.length < 1) {
         cerrarDropdown();
         return;
       }
-      const lista = datos.filter(d => opts.filtrar(d, query)).slice(0, 20);
+
+      // Siempre pedir los datos frescos
+      let lista = [];
+      try {
+        const todos = await opts.obtenerDatos();
+        console.log("[BUSCADOR] obtenerDatos devolvió:", Array.isArray(todos) ? todos.length : typeof todos);
+        if (Array.isArray(todos)) {
+          lista = todos.filter(d => opts.filtrar(d, query)).slice(0, 20);
+        }
+      } catch (e) {
+        console.error("[BUSCADOR] Error al obtener datos:", e);
+      }
+
+      console.log("[BUSCADOR] query:", query, "resultados:", lista.length);
+
       dropdown.innerHTML = "";
+
       if (lista.length === 0) {
         dropdown.innerHTML = "<div class='buscador-vacio'>Sin resultados</div>";
         abrirDropdown();
         return;
       }
+
       lista.forEach(item => {
         const div = document.createElement("div");
         div.className = "buscador-item";
@@ -259,10 +267,10 @@ const App = (() => {
         div.addEventListener("mousedown", seleccionar);
         div.addEventListener("touchstart", seleccionar, { passive: false });
         div.addEventListener("pointerdown", seleccionar);
-        div.addEventListener("click", seleccionar);
 
         dropdown.appendChild(div);
       });
+
       abrirDropdown();
     }
 
@@ -273,8 +281,7 @@ const App = (() => {
         cerrarDropdown();
         return;
       }
-      await cargarDatos();
-      renderResultados(q);
+      await renderResultados(q);
     }
 
     input.addEventListener("input", manejarInput);
@@ -289,8 +296,7 @@ const App = (() => {
       const q = normalizar(input.value);
       if (q.length < 1) return;
       if (seleccionado) return;
-      await cargarDatos();
-      renderResultados(q);
+      await renderResultados(q);
     });
 
     input.addEventListener("blur", () => {
@@ -298,7 +304,7 @@ const App = (() => {
         if (!wrapper.contains(document.activeElement)) {
           cerrarDropdown();
         }
-      }, 150);
+      }, 200);
     });
 
     input.addEventListener("keydown", (e) => {
@@ -329,7 +335,6 @@ const App = (() => {
 
     return wrapper;
   }
-
   // ═══════════════════════════════════════════════════════════════
   // STOCK
   // ═══════════════════════════════════════════════════════════════
