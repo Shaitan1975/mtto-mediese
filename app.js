@@ -1,5 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════
-// SISTEMA DE MANTENIMIENTO MEDIESE - FRONTEND v1.0
+// SISTEMA DE MANTENIMIENTO MEDIESE - FRONTEND v1.1
+// Fase 1: Almacén de mantenimiento
 // ═══════════════════════════════════════════════════════════════════
 
 const CONFIG = {
@@ -15,7 +16,8 @@ const App = (() => {
     refacciones: null,
     proveedores: null,
     ubicaciones: null,
-    stock: null
+    stock: null,
+    movimientos: null
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -45,31 +47,41 @@ const App = (() => {
   async function api(accion, data, metodo) {
     metodo = metodo || "GET";
     const url = CONFIG.APPS_SCRIPT_URL;
-    if (metodo === "GET") {
-      const qs = new URLSearchParams({ accion: accion, ...(data || {}) }).toString();
-      const r = await fetch(url + "?" + qs, { cache: "no-store", redirect: "follow" });
-      return await r.json();
-    } else {
-      const r = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ accion: accion, data: data }),
-        redirect: "follow"
-      });
-      return await r.json();
+    try {
+      if (metodo === "GET") {
+        const qs = new URLSearchParams({ accion: accion, ...(data || {}) }).toString();
+        const r = await fetch(url + "?" + qs, { cache: "no-store", redirect: "follow" });
+        return await r.json();
+      } else {
+        const r = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ accion: accion, data: data }),
+          redirect: "follow"
+        });
+        return await r.json();
+      }
+    } catch (e) {
+      console.error("Error API:", e);
+      return { ok: false, error: e.message };
     }
   }
 
   async function verificarUsuario(usuario, password) {
-    const resp = await fetch("usuarios.json?t=" + Date.now(), { cache: "no-store" });
-    const usuarios = await resp.json();
-    const u = usuarios.find(x => x.user === usuario.toLowerCase().trim());
-    if (!u || u.activo === false) return null;
-    const hash = await pbkdf2Hash(password, u.salt);
-    if (hash === u.hash) {
-      return { user: u.user, nombre: u.nombre, rol: u.rol, permisos: u.permisos || [] };
+    try {
+      const resp = await fetch("usuarios.json?t=" + Date.now(), { cache: "no-store" });
+      const usuarios = await resp.json();
+      const u = usuarios.find(x => x.user === usuario.toLowerCase().trim());
+      if (!u || u.activo === false) return null;
+      const hash = await pbkdf2Hash(password, u.salt);
+      if (hash === u.hash) {
+        return { user: u.user, nombre: u.nombre, rol: u.rol, permisos: u.permisos || [] };
+      }
+      return null;
+    } catch (e) {
+      console.error("Error verificarUsuario:", e);
+      return null;
     }
-    return null;
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -106,35 +118,42 @@ const App = (() => {
   function initApp() {
     usuarioActual = getSession();
     if (!usuarioActual) { window.location.href = "index.html"; return; }
-    document.getElementById("user-info").textContent =
-      usuarioActual.nombre + " (" + usuarioActual.rol + ")";
+    const ui = document.getElementById("user-info");
+    if (ui) ui.textContent = usuarioActual.nombre + " (" + usuarioActual.rol + ")";
 
-    // Menú dinámico por rol
     mostrarBotonesPorRol();
 
-    // Listeners
-    document.getElementById("btn-logout").addEventListener("click", () => {
+    const addEvent = (id, evento, handler) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener(evento, handler);
+    };
+
+    addEvent("btn-logout", "click", () => {
       if (confirm("¿Cerrar sesión?")) { clearSession(); window.location.href = "index.html"; }
     });
-    document.getElementById("btn-stock").addEventListener("click", verStock);
-    document.getElementById("btn-entrada").addEventListener("click", () => abrirMovimiento("ENTRADA"));
-    document.getElementById("btn-salida").addEventListener("click", () => abrirMovimiento("SALIDA"));
-    document.getElementById("btn-devolucion").addEventListener("click", () => abrirMovimiento("DEVOLUCION"));
-    document.getElementById("btn-transferencia").addEventListener("click", () => abrirMovimiento("TRANSFERENCIA"));
-    document.getElementById("btn-movimientos").addEventListener("click", verMovimientos);
-    document.getElementById("btn-refacciones").addEventListener("click", verRefacciones);
-    document.getElementById("btn-alertas").addEventListener("click", verAlertas);
-    document.getElementById("btn-proveedores").addEventListener("click", verProveedores);
-    document.getElementById("btn-ubicaciones").addEventListener("click", verUbicaciones);
-    document.getElementById("btn-reconstruir").addEventListener("click", reconstruirStock);
+    addEvent("btn-stock", "click", verStock);
+    addEvent("btn-entrada", "click", () => abrirMovimiento("ENTRADA"));
+    addEvent("btn-salida", "click", () => abrirMovimiento("SALIDA"));
+    addEvent("btn-devolucion", "click", () => abrirMovimiento("DEVOLUCION"));
+    addEvent("btn-transferencia", "click", () => abrirMovimiento("TRANSFERENCIA"));
+    addEvent("btn-movimientos", "click", verMovimientos);
+    addEvent("btn-refacciones", "click", verRefacciones);
+    addEvent("btn-alertas", "click", verAlertas);
+    addEvent("btn-proveedores", "click", verProveedores);
+    addEvent("btn-ubicaciones", "click", verUbicaciones);
+    addEvent("btn-reconstruir", "click", reconstruirStock);
+    addEvent("btn-agregar-linea", "click", agregarLinea);
+    addEvent("btn-guardar-mov", "click", guardarMovimiento);
 
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    }
     mostrarVista("view-menu");
   }
 
   function mostrarBotonesPorRol() {
     const rol = usuarioActual.rol;
-    const ocultar = (id) => { const el = document.getElementById(id); if (el) el.classList.add("hidden"); };
+    const ocultar = (id) => { const el = document.getElementById(id); if (el) el.style.display = "none"; };
     if (rol === "tecnico") {
       ocultar("btn-entrada"); ocultar("btn-transferencia"); ocultar("btn-refacciones");
       ocultar("btn-proveedores"); ocultar("btn-ubicaciones"); ocultar("btn-reconstruir");
@@ -143,7 +162,6 @@ const App = (() => {
     } else if (rol === "gerencia") {
       ocultar("btn-reconstruir");
     }
-    // admin ve todo
   }
 
   function mostrarVista(id) {
@@ -153,7 +171,8 @@ const App = (() => {
       const el = document.getElementById(v);
       if (el) el.classList.add("hidden");
     });
-    document.getElementById(id).classList.remove("hidden");
+    const el = document.getElementById(id);
+    if (el) el.classList.remove("hidden");
   }
 
   function volverAlMenu() { mostrarVista("view-menu"); }
@@ -167,7 +186,7 @@ const App = (() => {
     document.getElementById("loading-text").textContent = "Cargando stock...";
     try {
       const r = await api("listar_stock");
-      if (!r.ok) throw new Error(r.error);
+      if (!r.ok) throw new Error(r.error || "Error desconocido");
       cache.stock = r.items;
       renderStock(r.items);
       mostrarVista("view-stock");
@@ -180,8 +199,8 @@ const App = (() => {
   function renderStock(items) {
     const cont = document.getElementById("lista-stock");
     cont.innerHTML = "";
-    if (!items.length) {
-      cont.innerHTML = "<p>Sin stock.</p>";
+    if (!items || !items.length) {
+      cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin stock registrado.</p>";
       return;
     }
     items.forEach(x => {
@@ -189,8 +208,8 @@ const App = (() => {
       d.className = "stock-item";
       d.innerHTML =
         "<div class='stock-cod'>" + x.codigo + "</div>" +
-        "<div class='stock-desc'>" + x.descripcion + "</div>" +
         "<div class='stock-saldo'>" + x.saldo + " " + x.unidad + "</div>" +
+        "<div class='stock-desc'>" + x.descripcion + "</div>" +
         "<div class='stock-info'>Lote: " + x.lote + " | " + x.ubicacion + "</div>";
       cont.appendChild(d);
     });
@@ -201,36 +220,33 @@ const App = (() => {
   // ═══════════════════════════════════════════════════════════════
 
   async function abrirMovimiento(tipo) {
-    const cont = document.getElementById("mov-titulo");
-    cont.textContent = tipo;
+    document.getElementById("mov-titulo").textContent = tipo;
     document.getElementById("mov-tipo").value = tipo;
     document.getElementById("mov-lineas").innerHTML = "";
     document.getElementById("mov-status").textContent = "";
     document.getElementById("mov-referencia").value = "";
     document.getElementById("mov-notas").value = "";
     document.getElementById("mov-proveedor").value = "";
-    document.getElementById("mov-ubicacion-origen").value = "";
-    document.getElementById("mov-ubicacion-destino").value = "";
 
     const grupoProv = document.getElementById("grupo-proveedor");
     const grupoDest = document.getElementById("grupo-ubicacion-destino");
     const grupoOrig = document.getElementById("grupo-ubicacion-origen");
+
+    grupoProv.classList.add("hidden");
+    grupoDest.classList.add("hidden");
+    grupoOrig.classList.add("hidden");
+
     if (tipo === "ENTRADA") {
       grupoProv.classList.remove("hidden");
-      grupoDest.classList.add("hidden");
-      grupoOrig.classList.add("hidden");
     } else if (tipo === "TRANSFERENCIA") {
-      grupoProv.classList.add("hidden");
-      grupoDest.classList.remove("hidden");
       grupoOrig.classList.remove("hidden");
+      grupoDest.classList.remove("hidden");
     } else {
-      grupoProv.classList.add("hidden");
-      grupoDest.classList.add("hidden");
       grupoOrig.classList.remove("hidden");
     }
 
     await cargarUbicacionesSelects();
-    agregarLinea();
+    await agregarLinea();
     mostrarVista("view-movimiento");
   }
 
@@ -239,9 +255,13 @@ const App = (() => {
       const r = await api("listar_ubicaciones");
       cache.ubicaciones = r.ubicaciones || [];
     }
-    const opts = cache.ubicaciones.map(u => "<option value='" + u.codigo + "'>" + u.nombre + "</option>").join("");
-    document.getElementById("mov-ubicacion-origen").innerHTML = opts;
-    document.getElementById("mov-ubicacion-destino").innerHTML = opts;
+    const opts = cache.ubicaciones.map(u =>
+      "<option value='" + u.codigo + "'>" + u.nombre + "</option>"
+    ).join("");
+    const selOrig = document.getElementById("mov-ubicacion-origen");
+    const selDest = document.getElementById("mov-ubicacion-destino");
+    if (selOrig) selOrig.innerHTML = opts;
+    if (selDest) selDest.innerHTML = opts;
   }
 
   async function agregarLinea() {
@@ -254,21 +274,47 @@ const App = (() => {
       cache.ubicaciones = r.ubicaciones || [];
     }
     const cont = document.getElementById("mov-lineas");
+    if (!cont) return;
+
     const div = document.createElement("div");
     div.className = "linea";
+
+    const optsRef = cache.refacciones.map(r =>
+      "<option value='" + r.codigo + "'>" + r.codigo + " - " + r.descripcion + "</option>"
+    ).join("");
+    const optsUbic = cache.ubicaciones.map(u =>
+      "<option value='" + u.codigo + "'>" + u.codigo + "</option>"
+    ).join("");
+
     div.innerHTML =
-      "<select class='lin-codigo'>" +
-        cache.refacciones.map(r => "<option value='" + r.codigo + "'>" + r.codigo + " - " + r.descripcion + "</option>").join("") +
-      "</select>" +
+      "<select class='lin-codigo'>" + optsRef + "</select>" +
       "<input class='lin-lote' placeholder='Lote' />" +
-      "<input class='lin-cantidad' type='number' placeholder='Cantidad' />" +
-      "<select class='lin-ubicacion'>" +
-        cache.ubicaciones.map(u => "<option value='" + u.codigo + "'>" + u.codigo + "</option>").join("") +
-      "</select>" +
-      "<input class='lin-pu' type='number' placeholder='PU' />" +
-      "<input class='lin-iva' type='number' placeholder='IVA' />" +
+      "<input class='lin-cantidad' type='number' placeholder='Cantidad' step='0.01' />" +
+      "<select class='lin-ubicacion'>" + optsUbic + "</select>" +
+      "<input class='lin-pu' type='number' placeholder='PU' step='0.01' />" +
+      "<input class='lin-iva' type='number' placeholder='IVA' step='0.01' />" +
       "<button type='button' class='btn-quitar'>X</button>";
+
     div.querySelector(".btn-quitar").addEventListener("click", () => div.remove());
+
+    // Auto-llenar PU, IVA y lote por defecto al cambiar refacción
+    const selCod = div.querySelector(".lin-codigo");
+    selCod.addEventListener("change", () => {
+      const ref = cache.refacciones.find(r => r.codigo === selCod.value);
+      if (ref) {
+        div.querySelector(".lin-pu").value = ref.pu || 0;
+        div.querySelector(".lin-iva").value = ref.iva || 0;
+        if (ref.maneja_lote === "NO") {
+          div.querySelector(".lin-lote").value = "SIN_LOTE";
+        }
+      }
+    });
+
+    // Disparar el change para llenar PU/IVA del primero
+    if (cache.refacciones.length > 0) {
+      selCod.dispatchEvent(new Event("change"));
+    }
+
     cont.appendChild(div);
   }
 
@@ -281,15 +327,21 @@ const App = (() => {
       lineas.push({
         codigo: codigo,
         descripcion: ref.descripcion || "",
-        lote: l.querySelector(".lin-lote").value.trim(),
+        lote: l.querySelector(".lin-lote").value.trim() || "SIN_LOTE",
         cantidad: Number(l.querySelector(".lin-cantidad").value) || 0,
-        unidad: ref.unidad || "",
+        unidad: ref.unidad || "PZ",
         ubicacion: l.querySelector(".lin-ubicacion").value,
         pu: Number(l.querySelector(".lin-pu").value) || 0,
         iva: Number(l.querySelector(".lin-iva").value) || 0,
         moneda: ref.moneda || "MXN"
       });
     });
+
+    if (lineas.length === 0 || lineas.every(l => l.cantidad <= 0)) {
+      document.getElementById("mov-status").textContent = "❌ Agrega al menos una línea con cantidad";
+      document.getElementById("mov-status").className = "send-status error";
+      return;
+    }
 
     const body = {
       tipo_movimiento: tipo,
@@ -308,32 +360,42 @@ const App = (() => {
 
     const status = document.getElementById("mov-status");
     status.textContent = "Guardando...";
+    status.className = "send-status";
+
     try {
       const r = await api("registrar_movimiento", body, "POST");
-      if (!r.ok) throw new Error(r.error);
+      if (!r.ok) throw new Error(r.error || "Error desconocido");
       status.textContent = "✅ " + r.mensaje + " (" + r.id_movimiento + ")";
-      setTimeout(volverAlMenu, 1500);
+      status.className = "send-status ok";
+      setTimeout(volverAlMenu, 1800);
     } catch (e) {
       status.textContent = "❌ " + e.message;
+      status.className = "send-status error";
     }
   }
 
   async function verMovimientos() {
     mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando movimientos...";
     try {
       const r = await api("listar_movimientos");
+      if (!r.ok) throw new Error(r.error);
       const cont = document.getElementById("lista-movimientos");
       cont.innerHTML = "";
-      (r.movimientos || []).forEach(m => {
-        const d = document.createElement("div");
-        d.className = "mov-item";
-        d.innerHTML =
-          "<div class='mov-id'>" + m.id + "</div>" +
-          "<div class='mov-tipo'>" + m.tipo + " " + m.fecha + " " + m.hora + "</div>" +
-          "<div class='mov-total'>$" + m.total.toFixed(2) + "</div>" +
-          "<div class='mov-user'>" + m.nombre_usuario + " (" + m.estado + ")</div>";
-        cont.appendChild(d);
-      });
+      if (!r.movimientos || !r.movimientos.length) {
+        cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin movimientos.</p>";
+      } else {
+        r.movimientos.forEach(m => {
+          const d = document.createElement("div");
+          d.className = "mov-item";
+          d.innerHTML =
+            "<div class='mov-id'>" + m.id + "</div>" +
+            "<div class='mov-total'>$" + Number(m.total).toFixed(2) + "</div>" +
+            "<div class='mov-tipo'>" + m.tipo + " · " + m.fecha + " " + m.hora + "</div>" +
+            "<div class='mov-user'>" + m.nombre_usuario + " · " + m.estado + "</div>";
+          cont.appendChild(d);
+        });
+      }
       mostrarVista("view-movimientos");
     } catch (e) {
       alert("Error: " + e.message);
@@ -347,19 +409,27 @@ const App = (() => {
 
   async function verRefacciones() {
     mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando refacciones...";
     try {
       const r = await api("listar_refacciones");
+      if (!r.ok) throw new Error(r.error);
+      cache.refacciones = r.refacciones;
       const cont = document.getElementById("lista-refacciones");
       cont.innerHTML = "";
-      (r.refacciones || []).forEach(x => {
-        const d = document.createElement("div");
-        d.className = "ref-item";
-        d.innerHTML =
-          "<div class='ref-cod'>" + x.codigo + "</div>" +
-          "<div class='ref-desc'>" + x.descripcion + "</div>" +
-          "<div class='ref-info'>" + x.unidad + " | " + x.categoria + " | min " + x.minimo + "</div>";
-        cont.appendChild(d);
-      });
+      if (!r.refacciones.length) {
+        cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin refacciones registradas.</p>";
+      } else {
+        r.refacciones.forEach(x => {
+          const d = document.createElement("div");
+          d.className = "ref-item";
+          d.innerHTML =
+            "<div class='ref-cod'>" + x.codigo + "</div>" +
+            "<div class='ref-info'>min " + x.minimo + " / max " + x.maximo + "</div>" +
+            "<div class='ref-desc'>" + x.descripcion + "</div>" +
+            "<div class='ref-info'>" + x.unidad + " · " + x.categoria + " · $" + x.pu + " " + x.moneda + "</div>";
+          cont.appendChild(d);
+        });
+      }
       mostrarVista("view-refacciones");
     } catch (e) {
       alert("Error: " + e.message);
@@ -373,20 +443,26 @@ const App = (() => {
 
   async function verAlertas() {
     mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando alertas...";
     try {
       const r = await api("listar_alertas_stock");
+      if (!r.ok) throw new Error(r.error);
       const cont = document.getElementById("lista-alertas");
       cont.innerHTML = "";
-      if (!r.alertas.length) cont.innerHTML = "<p>Sin alertas.</p>";
-      r.alertas.forEach(a => {
-        const d = document.createElement("div");
-        d.className = "alerta-item";
-        d.innerHTML =
-          "<div class='alerta-cod'>" + a.codigo + "</div>" +
-          "<div class='alerta-desc'>" + a.descripcion + "</div>" +
-          "<div class='alerta-saldo'>" + a.saldo_actual + " / min " + a.minimo + "</div>";
-        cont.appendChild(d);
-      });
+      if (!r.alertas.length) {
+        cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin alertas.</p>";
+      } else {
+        r.alertas.forEach(a => {
+          const d = document.createElement("div");
+          d.className = "alerta-item";
+          d.innerHTML =
+            "<div class='alerta-cod'>" + a.codigo + "</div>" +
+            "<div class='alerta-saldo'>" + a.saldo_actual + " / min " + a.minimo + "</div>" +
+            "<div class='alerta-desc'>" + a.descripcion + "</div>" +
+            "<div class='ref-info'>" + a.ubicacion + " · " + a.fecha + "</div>";
+          cont.appendChild(d);
+        });
+      }
       mostrarVista("view-alertas");
     } catch (e) {
       alert("Error: " + e.message);
@@ -395,17 +471,70 @@ const App = (() => {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // PROVEEDORES / UBICACIONES
+  // PROVEEDORES
   // ═══════════════════════════════════════════════════════════════
 
   async function verProveedores() {
-    const r = await api("listar_proveedores");
-    alert("Proveedores: " + (r.proveedores || []).length + "\n(Implementar vista completa)");
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando proveedores...";
+    try {
+      const r = await api("listar_proveedores");
+      if (!r.ok) throw new Error(r.error);
+      const cont = document.getElementById("lista-proveedores");
+      cont.innerHTML = "";
+      if (!r.proveedores.length) {
+        cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin proveedores.</p>";
+      } else {
+        r.proveedores.forEach(p => {
+          const d = document.createElement("div");
+          d.className = "ref-item";
+          d.innerHTML =
+            "<div class='ref-cod'>" + p.codigo + "</div>" +
+            "<div class='ref-info'>" + p.moneda + "</div>" +
+            "<div class='ref-desc'>" + p.razon_social + "</div>" +
+            "<div class='ref-info'>" + (p.contacto || "") + " · " + (p.telefono || "") + "</div>";
+          cont.appendChild(d);
+        });
+      }
+      mostrarVista("view-proveedores");
+    } catch (e) {
+      alert("Error: " + e.message);
+      volverAlMenu();
+    }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // UBICACIONES
+  // ═══════════════════════════════════════════════════════════════
+
   async function verUbicaciones() {
-    const r = await api("listar_ubicaciones");
-    alert("Ubicaciones: " + (r.ubicaciones || []).length + "\n(Implementar vista completa)");
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando ubicaciones...";
+    try {
+      const r = await api("listar_ubicaciones");
+      if (!r.ok) throw new Error(r.error);
+      cache.ubicaciones = r.ubicaciones;
+      const cont = document.getElementById("lista-ubicaciones");
+      cont.innerHTML = "";
+      if (!r.ubicaciones.length) {
+        cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin ubicaciones.</p>";
+      } else {
+        r.ubicaciones.forEach(u => {
+          const d = document.createElement("div");
+          d.className = "ref-item";
+          d.innerHTML =
+            "<div class='ref-cod'>" + u.codigo + "</div>" +
+            "<div class='ref-info'>" + u.tipo + "</div>" +
+            "<div class='ref-desc'>" + u.nombre + "</div>" +
+            "<div class='ref-info'>Responsable: " + (u.responsable || "-") + "</div>";
+          cont.appendChild(d);
+        });
+      }
+      mostrarVista("view-ubicaciones");
+    } catch (e) {
+      alert("Error: " + e.message);
+      volverAlMenu();
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -414,10 +543,12 @@ const App = (() => {
 
   async function reconstruirStock() {
     if (usuarioActual.rol !== "admin") return;
-    if (!confirm("¿Reconstruir stock desde movimientos?")) return;
+    if (!confirm("¿Reconstruir stock desde movimientos?\n\nEsto recalcula STOCK_ACTUAL desde cero. Puede tardar unos segundos.")) return;
     mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Reconstruyendo stock...";
     try {
       const r = await api("reconstruir_stock", {}, "POST");
+      if (!r.ok) throw new Error(r.error);
       alert("✅ " + r.total + " items reconstruidos");
       volverAlMenu();
     } catch (e) {
@@ -426,5 +557,18 @@ const App = (() => {
     }
   }
 
-  return { initLogin, initApp };
+  // ═══════════════════════════════════════════════════════════════
+  // EXPORTAR
+  // ═══════════════════════════════════════════════════════════════
+
+  return {
+    initLogin,
+    initApp,
+    volverAlMenu,
+    agregarLinea
+  };
+
 })();
+
+// Exponer al scope global para botones onclick inline
+window.App = App;
