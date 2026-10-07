@@ -48,7 +48,7 @@
       <input id="mov-referencia" placeholder="Ej. OT-2026-0001, Factura A-123" />
       <div id="grupo-proveedor">
         <label>Proveedor / Cliente</label>
-        <input id="mov-proveedor" placeholder="Nombre o código" />
+        <div id="mov-proveedor-container"></div>
       </div>
       <div id="grupo-ubicacion-origen">
         <label>Ubicación origen</label>
@@ -63,6 +63,9 @@
       <button type="button" id="btn-agregar-linea" class="btn-primary">+ Agregar línea</button>
       <label>Notas</label>
       <textarea id="mov-notas" placeholder="Notas adicionales"></textarea>
+      <div style="text-align:right; margin: 12px 0; font-size:18px;">
+        <strong>Total: <span id="mov-total" style="color:#15803d;">$0.00</span></strong>
+      </div>
       <button id="btn-guardar-mov" class="btn-primary">Guardar</button>
       <p id="mov-status" class="send-status"></p>
       <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
