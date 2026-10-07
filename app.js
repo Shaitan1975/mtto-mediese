@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════
-// SISTEMA DE MANTENIMIENTO MEDIESE - FRONTEND v1.1
+// SISTEMA DE MANTENIMIENTO MEDIESE - FRONTEND v1.2
 // Fase 1: Almacén de mantenimiento
+// Con buscadores tipo typeahead (refacción, proveedor, lote)
 // ═══════════════════════════════════════════════════════════════════
 
 const CONFIG = {
@@ -30,6 +31,11 @@ const App = (() => {
   }
   function setSession(d) { localStorage.setItem(CONFIG.SESSION_KEY, JSON.stringify(d)); }
   function clearSession() { localStorage.removeItem(CONFIG.SESSION_KEY); }
+
+  function normalizar(t) {
+    if (!t) return "";
+    return String(t).trim().toUpperCase();
+  }
 
   async function pbkdf2Hash(password, saltHex) {
     const enc = new TextEncoder();
@@ -178,6 +184,104 @@ const App = (() => {
   function volverAlMenu() { mostrarVista("view-menu"); }
 
   // ═══════════════════════════════════════════════════════════════
+  // BUSCADORES TIPO TYPEAHEAD
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Crea un buscador tipo typeahead.
+   * @param {Object} opts
+   *   - placeholder: texto del input
+   *   - obtenerDatos: función async que devuelve array de items
+   *   - filtrar: función (item, query) => boolean
+   *   - renderItem: función (item) => string HTML
+   *   - onSelect: función (item) => void
+   *   - valorInicial: string opcional para prellenar
+   *   - permitirLibre: boolean, si true, deja escribir valores que no están en la lista (para lotes nuevos)
+   */
+  function crearBuscador(opts) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "buscador-wrapper";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "buscador-input";
+    input.placeholder = opts.placeholder || "Buscar...";
+    input.autocomplete = "off";
+    if (opts.valorInicial) input.value = opts.valorInicial;
+
+    const dropdown = document.createElement("div");
+    dropdown.className = "buscador-resultados hidden";
+
+    wrapper.appendChild(input);
+    wrapper.appendChild(dropdown);
+
+    let datos = [];
+    let seleccionado = null;
+
+    async function cargarDatos() {
+      if (datos.length === 0) {
+        datos = await opts.obtenerDatos();
+      }
+      return datos;
+    }
+
+    function renderResultados(query) {
+      const lista = datos.filter(d => opts.filtrar(d, query)).slice(0, 20);
+      dropdown.innerHTML = "";
+      if (lista.length === 0) {
+        dropdown.innerHTML = "<div class='buscador-vacio'>Sin resultados</div>";
+        dropdown.classList.remove("hidden");
+        return;
+      }
+      lista.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "buscador-item";
+        div.innerHTML = opts.renderItem(item);
+        div.addEventListener("click", () => {
+          seleccionado = item;
+          input.value = opts.renderSeleccion ? opts.renderSeleccion(item) : item.codigo || "";
+          dropdown.classList.add("hidden");
+          if (opts.onSelect) opts.onSelect(item);
+        });
+        dropdown.appendChild(div);
+      });
+      dropdown.classList.remove("hidden");
+    }
+
+    input.addEventListener("input", async (e) => {
+      const q = normalizar(e.target.value);
+      if (q.length < 1) {
+        dropdown.classList.add("hidden");
+        return;
+      }
+      await cargarDatos();
+      renderResultados(q);
+    });
+
+    input.addEventListener("focus", async () => {
+      const q = normalizar(input.value);
+      if (q.length < 1) return;
+      await cargarDatos();
+      renderResultados(q);
+    });
+
+    // Cerrar dropdown al hacer clic fuera
+    document.addEventListener("click", (e) => {
+      if (!wrapper.contains(e.target)) {
+        dropdown.classList.add("hidden");
+      }
+    });
+
+    // Métodos expuestos
+    wrapper.getValue = () => input.value;
+    wrapper.getSeleccionado = () => seleccionado;
+    wrapper.setValue = (v) => { input.value = v; };
+    wrapper.limpiar = () => { input.value = ""; seleccionado = null; };
+
+    return wrapper;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // STOCK
   // ═══════════════════════════════════════════════════════════════
 
@@ -226,7 +330,6 @@ const App = (() => {
     document.getElementById("mov-status").textContent = "";
     document.getElementById("mov-referencia").value = "";
     document.getElementById("mov-notas").value = "";
-    document.getElementById("mov-proveedor").value = "";
 
     const grupoProv = document.getElementById("grupo-proveedor");
     const grupoDest = document.getElementById("grupo-ubicacion-destino");
@@ -273,69 +376,167 @@ const App = (() => {
       const r = await api("listar_ubicaciones");
       cache.ubicaciones = r.ubicaciones || [];
     }
+    if (!cache.proveedores) {
+      const r = await api("listar_proveedores");
+      cache.proveedores = r.proveedores || [];
+    }
+
     const cont = document.getElementById("mov-lineas");
     if (!cont) return;
 
     const div = document.createElement("div");
     div.className = "linea";
 
-    const optsRef = cache.refacciones.map(r =>
-      "<option value='" + r.codigo + "'>" + r.codigo + " - " + r.descripcion + "</option>"
-    ).join("");
-    const optsUbic = cache.ubicaciones.map(u =>
-      "<option value='" + u.codigo + "'>" + u.codigo + "</option>"
-    ).join("");
+    const tipo = document.getElementById("mov-tipo").value;
 
-    div.innerHTML =
-      "<select class='lin-codigo'>" + optsRef + "</select>" +
-      "<input class='lin-lote' placeholder='Lote' />" +
-      "<input class='lin-cantidad' type='number' placeholder='Cantidad' step='0.01' />" +
-      "<select class='lin-ubicacion'>" + optsUbic + "</select>" +
-      "<input class='lin-pu' type='number' placeholder='PU' step='0.01' />" +
-      "<input class='lin-iva' type='number' placeholder='IVA' step='0.01' />" +
-      "<button type='button' class='btn-quitar'>X</button>";
+    // ─── Buscador de refacción ───
+    const buscadorRef = crearBuscador({
+      placeholder: "Código o descripción...",
+      obtenerDatos: async () => cache.refacciones,
+      filtrar: (item, q) =>
+        normalizar(item.codigo).includes(q) ||
+        normalizar(item.descripcion).includes(q),
+      renderItem: (item) =>
+        "<div class='buscador-cod'>" + item.codigo + "</div>" +
+        "<div class='buscador-desc'>" + item.descripcion + "</div>" +
+        "<div class='buscador-meta'>" + item.unidad + " · " + item.categoria + "</div>",
+      renderSeleccion: (item) => item.codigo + " - " + item.descripcion,
+      onSelect: (item) => {
+        // Autollenar PU, IVA, lote por defecto, unidad
+        div.dataset.codigo = item.codigo;
+        div.dataset.descripcion = item.descripcion;
+        div.dataset.unidad = item.unidad;
+        div.dataset.moneda = item.moneda;
+        const puInput = div.querySelector(".lin-pu");
+        const ivaInput = div.querySelector(".lin-iva");
+        if (puInput) puInput.value = item.pu || 0;
+        if (ivaInput) ivaInput.value = item.iva || 0;
+        // Cargar lotes disponibles
+        cargarLotesDeRefaccion(div, item.codigo);
+      }
+    });
 
-    div.querySelector(".btn-quitar").addEventListener("click", () => div.remove());
-
-    // Auto-llenar PU, IVA y lote por defecto al cambiar refacción
-    const selCod = div.querySelector(".lin-codigo");
-    selCod.addEventListener("change", () => {
-      const ref = cache.refacciones.find(r => r.codigo === selCod.value);
-      if (ref) {
-        div.querySelector(".lin-pu").value = ref.pu || 0;
-        div.querySelector(".lin-iva").value = ref.iva || 0;
-        if (ref.maneja_lote === "NO") {
-          div.querySelector(".lin-lote").value = "SIN_LOTE";
+    // ─── Buscador de lote ───
+    const buscadorLote = crearBuscador({
+      placeholder: "Lote",
+      obtenerDatos: async () => div._lotesDisponibles || [],
+      filtrar: (item, q) => normalizar(item.lote).includes(q),
+      renderItem: (item) =>
+        "<div class='buscador-cod'>" + item.lote + "</div>" +
+        "<div class='buscador-desc'>Saldo: " + item.saldo + " " + item.unidad + "</div>" +
+        "<div class='buscador-meta'>" + item.ubicacion + "</div>",
+      renderSeleccion: (item) => item.lote,
+      onSelect: (item) => {
+        // Al elegir lote, prellenar ubicación si aplica
+        if (item.ubicacion) {
+          const selUbic = div.querySelector(".lin-ubicacion");
+          if (selUbic) selUbic.value = item.ubicacion;
         }
       }
     });
 
-    // Disparar el change para llenar PU/IVA del primero
-    if (cache.refacciones.length > 0) {
-      selCod.dispatchEvent(new Event("change"));
-    }
+    // ─── Select de ubicación ───
+    const optsUbic = cache.ubicaciones.map(u =>
+      "<option value='" + u.codigo + "'>" + u.codigo + "</option>"
+    ).join("");
+    const selUbic = document.createElement("select");
+    selUbic.className = "lin-ubicacion";
+    selUbic.innerHTML = optsUbic;
+
+    // ─── Cantidad, PU, IVA ───
+    const inputCantidad = document.createElement("input");
+    inputCantidad.className = "lin-cantidad";
+    inputCantidad.type = "number";
+    inputCantidad.placeholder = "Cantidad";
+    inputCantidad.step = "0.01";
+
+    const inputPu = document.createElement("input");
+    inputPu.className = "lin-pu";
+    inputPu.type = "number";
+    inputPu.placeholder = "PU";
+    inputPu.step = "0.01";
+
+    const inputIva = document.createElement("input");
+    inputIva.className = "lin-iva";
+    inputIva.type = "number";
+    inputIva.placeholder = "IVA";
+    inputIva.step = "0.01";
+
+    const btnQuitar = document.createElement("button");
+    btnQuitar.type = "button";
+    btnQuitar.className = "btn-quitar";
+    btnQuitar.textContent = "X";
+    btnQuitar.addEventListener("click", () => div.remove());
+
+    // ─── Ensamblar ───
+    div.appendChild(buscadorRef);
+    div.appendChild(buscadorLote);
+    div.appendChild(inputCantidad);
+    div.appendChild(selUbic);
+    div.appendChild(inputPu);
+    div.appendChild(inputIva);
+    div.appendChild(btnQuitar);
 
     cont.appendChild(div);
+  }
+
+  /**
+   * Carga lotes disponibles de una refacción al div de la línea.
+   * Solo aplica para SALIDA, DEVOLUCION, TRANSFERENCIA (no para ENTRADA).
+   */
+  async function cargarLotesDeRefaccion(div, codigo) {
+    const tipo = document.getElementById("mov-tipo").value;
+    if (tipo === "ENTRADA") {
+      // En entrada, el lote es libre
+      div._lotesDisponibles = [];
+      return;
+    }
+    try {
+      const r = await api("lotes_disponibles", { codigo: codigo });
+      div._lotesDisponibles = (r.lotes || []).map(l => ({
+        lote: l.lote,
+        saldo: l.saldo,
+        unidad: l.unidad,
+        ubicacion: l.ubicacion
+      }));
+    } catch (e) {
+      div._lotesDisponibles = [];
+    }
   }
 
   async function guardarMovimiento() {
     const tipo = document.getElementById("mov-tipo").value;
     const lineas = [];
-    document.querySelectorAll("#mov-lineas .linea").forEach(l => {
-      const codigo = l.querySelector(".lin-codigo").value;
-      const ref = cache.refacciones.find(r => r.codigo === codigo) || {};
+
+    const lineasDom = document.querySelectorAll("#mov-lineas .linea");
+    for (const l of lineasDom) {
+      const refBuscador = l.querySelector(".buscador-wrapper");
+      const loteBuscador = l.querySelectorAll(".buscador-wrapper")[1];
+      const codigo = (refBuscador && refBuscador.getSeleccionado())
+        ? refBuscador.getSeleccionado().codigo
+        : "";
+      const descripcion = l.dataset.descripcion || "";
+      const unidad = l.dataset.unidad || "PZ";
+      const lote = loteBuscador ? loteBuscador.getValue().trim() : "SIN_LOTE";
+
+      if (!codigo) {
+        document.getElementById("mov-status").textContent = "❌ Selecciona una refacción válida en cada línea";
+        document.getElementById("mov-status").className = "send-status error";
+        return;
+      }
+
       lineas.push({
         codigo: codigo,
-        descripcion: ref.descripcion || "",
-        lote: l.querySelector(".lin-lote").value.trim() || "SIN_LOTE",
+        descripcion: descripcion,
+        lote: lote || "SIN_LOTE",
         cantidad: Number(l.querySelector(".lin-cantidad").value) || 0,
-        unidad: ref.unidad || "PZ",
+        unidad: unidad,
         ubicacion: l.querySelector(".lin-ubicacion").value,
         pu: Number(l.querySelector(".lin-pu").value) || 0,
         iva: Number(l.querySelector(".lin-iva").value) || 0,
-        moneda: ref.moneda || "MXN"
+        moneda: l.dataset.moneda || "MXN"
       });
-    });
+    }
 
     if (lineas.length === 0 || lineas.every(l => l.cantidad <= 0)) {
       document.getElementById("mov-status").textContent = "❌ Agrega al menos una línea con cantidad";
@@ -480,6 +681,7 @@ const App = (() => {
     try {
       const r = await api("listar_proveedores");
       if (!r.ok) throw new Error(r.error);
+      cache.proveedores = r.proveedores;
       const cont = document.getElementById("lista-proveedores");
       cont.innerHTML = "";
       if (!r.proveedores.length) {
@@ -558,7 +760,7 @@ const App = (() => {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // EXPORTAR
+  // EXPORT
   // ═══════════════════════════════════════════════════════════════
 
   return {
@@ -570,5 +772,4 @@ const App = (() => {
 
 })();
 
-// Exponer al scope global para botones onclick inline
 window.App = App;
