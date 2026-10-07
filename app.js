@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════
-// SISTEMA DE MANTENIMIENTO MEDIESE - FRONTEND v1.3
+// SISTEMA DE MANTENIMIENTO MEDIESE - FRONTEND v1.4
 // Fase 1: Almacén de mantenimiento
-// Línea de captura rediseñada como tarjeta
+// Línea rediseñada + buscadores corregidos
 // ═══════════════════════════════════════════════════════════════════
 
 const CONFIG = {
@@ -189,7 +189,7 @@ const App = (() => {
   // BUSCADOR TYPEAHEAD
   // ═══════════════════════════════════════════════════════════════
 
-     function crearBuscador(opts) {
+  function crearBuscador(opts) {
     const wrapper = document.createElement("div");
     wrapper.className = "buscador-wrapper";
 
@@ -240,13 +240,11 @@ const App = (() => {
         abrirDropdown();
         return;
       }
-      
       lista.forEach(item => {
         const div = document.createElement("div");
         div.className = "buscador-item";
         div.innerHTML = opts.renderItem(item);
 
-        // Función que se ejecuta al seleccionar (compartida por varios eventos)
         const seleccionar = (ev) => {
           if (ev) {
             ev.preventDefault();
@@ -258,7 +256,6 @@ const App = (() => {
           if (opts.onSelect) opts.onSelect(item);
         };
 
-        // Escuchar múltiples eventos para cubrir mouse, touch y pointer
         div.addEventListener("mousedown", seleccionar);
         div.addEventListener("touchstart", seleccionar, { passive: false });
         div.addEventListener("pointerdown", seleccionar);
@@ -266,8 +263,9 @@ const App = (() => {
 
         dropdown.appendChild(div);
       });
+      abrirDropdown();
+    }
 
-    // ─── Manejo de escritura ───
     async function manejarInput() {
       const q = normalizar(input.value);
       if (q.length < 1) {
@@ -281,23 +279,20 @@ const App = (() => {
 
     input.addEventListener("input", manejarInput);
     input.addEventListener("keyup", (e) => {
-      // Ignorar teclas que no cambian el valor
       if (["Shift", "Control", "Alt", "Meta", "CapsLock", "Tab"].includes(e.key)) return;
       manejarInput();
     });
     input.addEventListener("change", manejarInput);
     input.addEventListener("paste", () => setTimeout(manejarInput, 0));
 
-    // ─── Focus: reabrir solo si hay texto y no hay selección ───
     input.addEventListener("focus", async () => {
       const q = normalizar(input.value);
       if (q.length < 1) return;
-      if (seleccionado) return; // ya hay algo seleccionado, no reabrir
+      if (seleccionado) return;
       await cargarDatos();
       renderResultados(q);
     });
 
-    // ─── Blur: cerrar dropdown (con pequeño delay para permitir mousedown) ───
     input.addEventListener("blur", () => {
       setTimeout(() => {
         if (!wrapper.contains(document.activeElement)) {
@@ -306,14 +301,12 @@ const App = (() => {
       }, 150);
     });
 
-    // ─── Escape: cerrar ───
     input.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         cerrarDropdown();
         input.blur();
       }
       if (e.key === "Enter" && dropdownAbierto) {
-        // Seleccionar el primer resultado visible
         const primero = dropdown.querySelector(".buscador-item");
         if (primero) {
           e.preventDefault();
@@ -322,14 +315,12 @@ const App = (() => {
       }
     });
 
-    // ─── Cerrar al hacer clic fuera (por si acaso) ───
     document.addEventListener("click", (e) => {
       if (!wrapper.contains(e.target)) {
         cerrarDropdown();
       }
     });
 
-    // ─── Métodos expuestos ───
     wrapper.getValue = () => input.value;
     wrapper.getSeleccionado = () => seleccionado;
     wrapper.setValue = (v) => { input.value = v; };
@@ -338,8 +329,6 @@ const App = (() => {
 
     return wrapper;
   }
-
-    
 
   // ═══════════════════════════════════════════════════════════════
   // STOCK
@@ -457,7 +446,7 @@ const App = (() => {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // LÍNEA DE MOVIMIENTO (tarjeta rediseñada)
+  // LÍNEA DE MOVIMIENTO
   // ═══════════════════════════════════════════════════════════════
 
   async function agregarLinea() {
@@ -473,13 +462,10 @@ const App = (() => {
     const cont = document.getElementById("mov-lineas");
     if (!cont) return;
 
-    const tipo = document.getElementById("mov-tipo").value;
-
-    // ─── Tarjeta ───
     const card = document.createElement("div");
     card.className = "linea-card";
 
-    // ═══ FILA 1: Refacción + botón X ═══
+    // FILA 1
     const fila1 = document.createElement("div");
     fila1.className = "linea-fila-1";
 
@@ -505,13 +491,10 @@ const App = (() => {
         card.dataset.moneda = item.moneda;
         card.querySelector(".lin-pu").value = item.pu || 0;
         card.querySelector(".lin-iva").value = item.iva || 0;
-        card.querySelector(".lin-unidad-label").textContent = item.unidad || "";
-        // Autoseleccionar ubicación por defecto
         if (item.ubicacion_defecto) {
           const selUbic = card.querySelector(".lin-ubicacion");
           if (selUbic) selUbic.value = item.ubicacion_defecto;
         }
-        // Cargar lotes disponibles
         cargarLotesDeRefaccion(card, item.codigo);
         recalcularSubtotal(card);
       }
@@ -532,7 +515,7 @@ const App = (() => {
     fila1.appendChild(grupoRef);
     fila1.appendChild(btnX);
 
-    // ═══ FILA 2: Lote | Cantidad | Ubicación | PU | IVA | Subtotal ═══
+    // FILA 2
     const fila2 = document.createElement("div");
     fila2.className = "linea-fila-2";
 
@@ -616,7 +599,7 @@ const App = (() => {
     grupoIva.appendChild(labelIva);
     grupoIva.appendChild(inputIva);
 
-    // Subtotal (display)
+    // Subtotal
     const grupoSub = document.createElement("div");
     grupoSub.className = "linea-grupo linea-grupo-subtotal";
     const labelSub = document.createElement("label");
@@ -634,7 +617,7 @@ const App = (() => {
     fila2.appendChild(grupoIva);
     fila2.appendChild(grupoSub);
 
-    // ═══ FILA 3: acciones (Duplicar) ═══
+    // FILA 3
     const fila3 = document.createElement("div");
     fila3.className = "linea-acciones";
     const btnDuplicar = document.createElement("button");
@@ -644,7 +627,6 @@ const App = (() => {
     btnDuplicar.addEventListener("click", () => duplicarLinea(card));
     fila3.appendChild(btnDuplicar);
 
-    // ═══ Ensamblar ═══
     card.appendChild(fila1);
     card.appendChild(fila2);
     card.appendChild(fila3);
@@ -682,12 +664,10 @@ const App = (() => {
     const pu = card.querySelector(".lin-pu").value;
     const iva = card.querySelector(".lin-iva").value;
 
-    // Crear nueva línea precargada
     agregarLinea().then(() => {
       const cont = document.getElementById("mov-lineas");
       const nueva = cont.lastElementChild;
       if (!nueva) return;
-      // Prellenar
       const refBuscador = nueva.querySelector(".buscador-wrapper");
       if (refBuscador && refBuscador.setValue) {
         refBuscador.setValue(codigo + " - " + descripcion);
@@ -699,7 +679,6 @@ const App = (() => {
       nueva.querySelector(".lin-ubicacion").value = ubicacion;
       nueva.querySelector(".lin-pu").value = pu;
       nueva.querySelector(".lin-iva").value = iva;
-      // No copiamos la cantidad: queda en 0 para que el usuario la escriba
     });
   }
 
