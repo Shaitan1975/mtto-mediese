@@ -217,6 +217,7 @@ const App = (() => {
 
     function cerrarDropdown() {
       dropdown.classList.add("hidden");
+      dropdown.innerHTML = "";
       dropdownAbierto = false;
     }
 
@@ -226,27 +227,23 @@ const App = (() => {
         return;
       }
 
-      // Siempre pedir los datos frescos
       let lista = [];
       try {
         const todos = await opts.obtenerDatos();
-        console.log("[BUSCADOR] obtenerDatos devolvió:", Array.isArray(todos) ? todos.length : typeof todos);
         if (Array.isArray(todos)) {
           lista = todos.filter(d => opts.filtrar(d, query)).slice(0, 20);
         }
       } catch (e) {
-        console.error("[BUSCADOR] Error al obtener datos:", e);
+        console.error("[BUSCADOR] Error:", e);
       }
 
-      console.log("[BUSCADOR] query:", query, "resultados:", lista.length);
-
-      dropdown.innerHTML = "";
-
+      // Si no hay resultados, CERRAR el dropdown (no mostrar "Sin resultados")
       if (lista.length === 0) {
-        dropdown.innerHTML = "<div class='buscador-vacio'>Sin resultados</div>";
-        abrirDropdown();
+        cerrarDropdown();
         return;
       }
+
+      dropdown.innerHTML = "";
 
       lista.forEach(item => {
         const div = document.createElement("div");
@@ -261,6 +258,7 @@ const App = (() => {
           seleccionado = item;
           input.value = opts.renderSeleccion ? opts.renderSeleccion(item) : (item.codigo || "");
           cerrarDropdown();
+          input.blur();   // ← clave: quitar el foco para que no se reabra
           if (opts.onSelect) opts.onSelect(item);
         };
 
@@ -289,16 +287,8 @@ const App = (() => {
       if (["Shift", "Control", "Alt", "Meta", "CapsLock", "Tab"].includes(e.key)) return;
       manejarInput();
     });
-    input.addEventListener("change", manejarInput);
-    input.addEventListener("paste", () => setTimeout(manejarInput, 0));
 
-    input.addEventListener("focus", async () => {
-      const q = normalizar(input.value);
-      if (q.length < 1) return;
-      if (seleccionado) return;
-      await renderResultados(q);
-    });
-
+    // Al perder el foco, cerrar
     input.addEventListener("blur", () => {
       setTimeout(() => {
         if (!wrapper.contains(document.activeElement)) {
@@ -307,20 +297,15 @@ const App = (() => {
       }, 200);
     });
 
+    // Escape cierra
     input.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         cerrarDropdown();
         input.blur();
       }
-      if (e.key === "Enter" && dropdownAbierto) {
-        const primero = dropdown.querySelector(".buscador-item");
-        if (primero) {
-          e.preventDefault();
-          primero.dispatchEvent(new Event("mousedown"));
-        }
-      }
     });
 
+    // Click fuera cierra
     document.addEventListener("click", (e) => {
       if (!wrapper.contains(e.target)) {
         cerrarDropdown();
