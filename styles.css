@@ -222,7 +222,7 @@ label {
 .linea-grupo {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -231,12 +231,14 @@ label {
 .linea-fila-2 {
   display: grid;
   grid-template-columns: 1.4fr 0.8fr 1fr 0.8fr 0.8fr 0.9fr;
-  gap: 10px;
+  gap: 12px;
   align-items: end;
+  padding-top: 4px;
 }
 
 .linea-grupo-subtotal {
   text-align: right;
+  padding-right: 4px;
 }
 
 .lin-subtotal {
@@ -245,12 +247,16 @@ label {
   color: var(--verde);
   padding: 9px 0;
   display: block;
+  text-align: right;
 }
 
 .linea-acciones {
-  margin-top: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #f3f4f6;
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .btn-quitar {
@@ -290,7 +296,7 @@ label {
   top: 100%;
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: 1000;
   background: #fff;
   border: 1px solid var(--gris-borde);
   border-radius: 8px;
