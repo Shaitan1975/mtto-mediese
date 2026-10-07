@@ -1,38 +1,122 @@
 [
   {
-    "user": "admin",
+    "user": "sensabit",
     "nombre": "Admin Mantenimiento",
     "rol": "admin",
-    "permisos": ["TODO"],
-    "salt": "REEMPLAZAR",
-    "hash": "REEMPLAZAR",
-    "activo": true
+    "area": "oficina",
+    "permisos": [
+      "TODO"
+    ],
+    "email": "sensabit@gmail.com",
+    "telefono": "",
+    "salt": "79e52035d5e11a1e80031a7db7200029",
+    "hash": "093db250894f66459cb30993dbab0a209853d237141d31c54951ff6767d2425a",
+    "activo": true,
+    "fecha_alta": "07/10/2026 13:32",
+    "ultimo_acceso": ""
   },
   {
-    "user": "supervisor1",
+    "user": "agustin.canseco",
     "nombre": "Supervisor Mantenimiento",
     "rol": "supervisor",
-    "permisos": ["CREAR_OT","ASIGNAR_OT","CERRAR_OT","EDITAR_MOVIMIENTO","VER_REPORTES"],
-    "salt": "REEMPLAZAR",
-    "hash": "REEMPLAZAR",
-    "activo": true
+    "area": "taller",
+    "permisos": [
+      "VER_OT",
+      "REGISTRAR_HORAS",
+      "CONSUMIR_MATERIAL",
+      "SUBIR_EVIDENCIA",
+      "VER_STOCK",
+      "VER_MOVIMIENTOS",
+      "CREAR_OT",
+      "ASIGNAR_OT",
+      "CERRAR_OT",
+      "CREAR_SOLICITUD",
+      "APROBAR_SOLICITUD",
+      "REGISTRAR_ENTRADA",
+      "REGISTRAR_SALIDA",
+      "REGISTRAR_DEVOLUCION",
+      "REGISTRAR_TRANSFERENCIA",
+      "EDITAR_MOVIMIENTO",
+      "CANCELAR_MOVIMIENTO",
+      "VER_REPORTES",
+      "VER_ALERTAS"
+    ],
+    "email": "",
+    "telefono": "",
+    "salt": "3003b15edd813d32ca3aa1cfd22558fb",
+    "hash": "b66af84821097a16b38a6488b8f8265a292a5cab275fe24efa04d2bb4ad78f07",
+    "activo": true,
+    "fecha_alta": "07/10/2026 13:32",
+    "ultimo_acceso": ""
   },
   {
     "user": "tecnico1",
     "nombre": "Técnico 1",
     "rol": "tecnico",
-    "permisos": ["VER_OT","REGISTRAR_HORAS","CONSUMIR_MATERIAL"],
-    "salt": "REEMPLAZAR",
-    "hash": "REEMPLAZAR",
-    "activo": true
+    "area": "taller",
+    "permisos": [
+      "VER_OT",
+      "REGISTRAR_HORAS",
+      "CONSUMIR_MATERIAL",
+      "SUBIR_EVIDENCIA",
+      "VER_STOCK",
+      "VER_MOVIMIENTOS"
+    ],
+    "email": "",
+    "telefono": "",
+    "salt": "f445879f03c7a77e390d49c7cdb29f5c",
+    "hash": "90d15b93b44980f978a0cb3d792a46085262c2e2567faa6b16703969bd791040",
+    "activo": true,
+    "fecha_alta": "07/10/2026 13:32",
+    "ultimo_acceso": ""
   },
   {
-    "user": "gerencia1",
+    "user": "tecnico2",
+    "nombre": "Técnico 2",
+    "rol": "tecnico",
+    "area": "taller",
+    "permisos": [
+      "VER_OT",
+      "REGISTRAR_HORAS",
+      "CONSUMIR_MATERIAL",
+      "SUBIR_EVIDENCIA",
+      "VER_STOCK",
+      "VER_MOVIMIENTOS"
+    ],
+    "email": "",
+    "telefono": "",
+    "salt": "dda93d346e6e23198ac5a330f562a549",
+    "hash": "045dd51f59fbb904e4cf4ba06c856ca190fc1b6ff5d89261d048a6ef8e3e1967",
+    "activo": true,
+    "fecha_alta": "07/10/2026 13:32",
+    "ultimo_acceso": ""
+  },
+  {
+    "user": "ernesto.escobar",
     "nombre": "Gerencia",
     "rol": "gerencia",
-    "permisos": ["VER_COSTOS","EXPORTAR","REABRIR_OT"],
-    "salt": "REEMPLAZAR",
-    "hash": "REEMPLAZAR",
-    "activo": true
+    "area": "oficina",
+    "permisos": [
+      "VER_OT",
+      "VER_STOCK",
+      "VER_MOVIMIENTOS",
+      "VER_REPORTES",
+      "VER_ALERTAS",
+      "VER_COSTOS",
+      "EXPORTAR",
+      "REABRIR_OT",
+      "CREAR_OT",
+      "ASIGNAR_OT",
+      "CERRAR_OT",
+      "EDITAR_MOVIMIENTO",
+      "CANCELAR_MOVIMIENTO"
+    ],
+    "email": "",
+    "telefono": "",
+    "salt": "3165169cfde14b2e8bfd1a8b32467ab9",
+    "hash": "a9d6118e23db3976acab2e699425fafbc708418aa1811af9d3d9cb606c9f8cb3",
+    "activo": true,
+    "fecha_alta": "07/10/2026 13:32",
+    "ultimo_acceso": ""
   }
 ]
