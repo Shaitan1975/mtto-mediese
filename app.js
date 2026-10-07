@@ -154,6 +154,7 @@ const App = (() => {
     addEvent("btn-reconstruir", "click", reconstruirStock);
     addEvent("btn-agregar-linea", "click", agregarLinea);
     addEvent("btn-guardar-mov", "click", guardarMovimiento);
+    addEvent("btn-guardar-refaccion", "click", guardarRefaccion);
 
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
@@ -184,6 +185,175 @@ const App = (() => {
   }
 
   function volverAlMenu() { mostrarVista("view-menu"); }
+
+  // ═══════════════════════════════════════════════════════════════
+  // FORMULARIO DE REFACCIÓN
+  // ═══════════════════════════════════════════════════════════════
+
+  async function abrirFormRefaccion(codigo) {
+    // Cargar ubicaciones y proveedores si no están
+    if (!cache.ubicaciones) {
+      const r = await api("listar_ubicaciones");
+      cache.ubicaciones = r.ubicaciones || [];
+    }
+    if (!cache.proveedores) {
+      const r = await api("listar_proveedores");
+      cache.proveedores = r.proveedores || [];
+    }
+    if (!cache.refacciones) {
+      const r = await api("listar_refacciones");
+      cache.refacciones = r.refacciones || [];
+    }
+
+    // Llenar select de ubicaciones
+    const selUbic = document.getElementById("ref-form-ubicacion");
+    selUbic.innerHTML = cache.ubicaciones.map(u =>
+      "<option value='" + u.codigo + "'>" + u.nombre + "</option>"
+    ).join("");
+
+    // Configurar formulario
+    const modo = codigo ? "editar" : "crear";
+    document.getElementById("ref-form-modo").value = modo;
+    document.getElementById("ref-form-codigo-original").value = codigo || "";
+    document.getElementById("ref-form-titulo").textContent = modo === "crear" ? "Nueva refacción" : "Editar refacción";
+
+    // Buscador de proveedor habitual
+    const contProv = document.getElementById("ref-form-proveedor-container");
+    contProv.innerHTML = "";
+    const buscadorProv = crearBuscador({
+      placeholder: "Buscar proveedor...",
+      obtenerDatos: async () => cache.proveedores,
+      filtrar: (item, q) =>
+        normalizar(item.codigo).includes(q) ||
+        normalizar(item.razon_social).includes(q),
+      renderItem: (item) =>
+        "<div class='buscador-cod'>" + item.codigo + "</div>" +
+        "<div class='buscador-desc'>" + item.razon_social + "</div>",
+      renderSeleccion: (item) => item.razon_social,
+      onSelect: (item) => {
+        contProv.dataset.codigo = item.codigo;
+        // Si el proveedor cotiza en USD, poner la moneda
+        const selMon = document.getElementById("ref-form-moneda");
+        if (item.moneda) selMon.value = item.moneda;
+      }
+    });
+    contProv.appendChild(buscadorProv);
+
+    // Si es editar, precargar
+    if (codigo) {
+      const ref = cache.refacciones.find(r => r.codigo === codigo);
+      if (ref) {
+        document.getElementById("ref-form-codigo").value = ref.codigo;
+        document.getElementById("ref-form-codigo").disabled = true; // no se puede cambiar
+        document.getElementById("ref-form-descripcion").value = ref.descripcion || "";
+        document.getElementById("ref-form-unidad").value = ref.unidad || "PZ";
+        document.getElementById("ref-form-categoria").value = ref.categoria || "OTROS";
+        document.getElementById("ref-form-marca").value = ref.marca || "";
+        document.getElementById("ref-form-modelo").value = ref.modelo || "";
+        document.getElementById("ref-form-minimo").value = ref.minimo || 0;
+        document.getElementById("ref-form-maximo").value = ref.maximo || 0;
+        document.getElementById("ref-form-maneja-lote").value = ref.maneja_lote || "NO";
+        document.getElementById("ref-form-ubicacion").value = ref.ubicacion_defecto || "";
+        document.getElementById("ref-form-pu").value = ref.pu || 0;
+        document.getElementById("ref-form-iva").value = ref.iva || 0;
+        document.getElementById("ref-form-moneda").value = ref.moneda || "MXN";
+        document.getElementById("ref-form-tipo-cambio").value = ref.tipo_cambio || 0;
+        document.getElementById("ref-form-notas").value = ref.notas || "";
+        // Proveedor
+        if (ref.proveedor_habitual) {
+          const prov = cache.proveedores.find(p => p.codigo === ref.proveedor_habitual);
+          if (prov) {
+            buscadorProv.setValue(prov.razon_social);
+            contProv.dataset.codigo = prov.codigo;
+          }
+        }
+      }
+    } else {
+      // Limpiar
+      document.getElementById("ref-form-codigo").value = "";
+      document.getElementById("ref-form-codigo").disabled = false;
+      document.getElementById("ref-form-descripcion").value = "";
+      document.getElementById("ref-form-marca").value = "";
+      document.getElementById("ref-form-modelo").value = "";
+      document.getElementById("ref-form-minimo").value = 0;
+      document.getElementById("ref-form-maximo").value = 0;
+      document.getElementById("ref-form-pu").value = 0;
+      document.getElementById("ref-form-iva").value = 0;
+      document.getElementById("ref-form-tipo-cambio").value = 0;
+      document.getElementById("ref-form-notas").value = "";
+      delete contProv.dataset.codigo;
+    }
+
+    document.getElementById("ref-form-status").textContent = "";
+    mostrarVista("view-refaccion-form");
+  }
+
+  async function guardarRefaccion() {
+    const modo = document.getElementById("ref-form-modo").value;
+    const codigo = document.getElementById("ref-form-codigo").value.trim();
+    const descripcion = document.getElementById("ref-form-descripcion").value.trim();
+    const status = document.getElementById("ref-form-status");
+
+    if (!codigo) { status.textContent = "❌ Código obligatorio"; status.className = "send-status error"; return; }
+    if (!descripcion) { status.textContent = "❌ Descripción obligatoria"; status.className = "send-status error"; return; }
+
+    const contProv = document.getElementById("ref-form-proveedor-container");
+    const body = {
+      codigo: codigo,
+      descripcion: descripcion,
+      unidad: document.getElementById("ref-form-unidad").value,
+      categoria: document.getElementById("ref-form-categoria").value,
+      marca: document.getElementById("ref-form-marca").value.trim(),
+      modelo: document.getElementById("ref-form-modelo").value.trim(),
+      minimo: Number(document.getElementById("ref-form-minimo").value) || 0,
+      maximo: Number(document.getElementById("ref-form-maximo").value) || 0,
+      maneja_lote: document.getElementById("ref-form-maneja-lote").value,
+      ubicacion_defecto: document.getElementById("ref-form-ubicacion").value,
+      proveedor_habitual: contProv.dataset.codigo || "",
+      pu: Number(document.getElementById("ref-form-pu").value) || 0,
+      iva: Number(document.getElementById("ref-form-iva").value) || 0,
+      moneda: document.getElementById("ref-form-moneda").value,
+      tipo_cambio: Number(document.getElementById("ref-form-tipo-cambio").value) || 0,
+      notas: document.getElementById("ref-form-notas").value.trim(),
+      usuario: usuarioActual.user,
+      rol: usuarioActual.rol
+    };
+
+    status.textContent = "Guardando...";
+    status.className = "send-status";
+
+    try {
+      const accion = modo === "crear" ? "crear_refaccion" : "editar_refaccion";
+      const r = await api(accion, body, "POST");
+      if (!r.ok) throw new Error(r.error);
+      status.textContent = "✅ " + r.mensaje;
+      status.className = "send-status ok";
+      cache.refacciones = null; // invalidar caché
+      setTimeout(() => { verRefacciones(); }, 800);
+    } catch (e) {
+      status.textContent = "❌ " + e.message;
+      status.className = "send-status error";
+    }
+  }
+
+  async function desactivarRefaccion(codigo) {
+    if (!confirm("¿Desactivar la refacción " + codigo + "?\n\nNo se borra, solo se oculta.")) return;
+    try {
+      const r = await api("desactivar_refaccion", {
+        codigo: codigo,
+        usuario: usuarioActual.user,
+        rol: usuarioActual.rol
+      }, "POST");
+      if (!r.ok) throw new Error(r.error);
+      alert("✅ " + r.mensaje);
+      cache.refacciones = null;
+      verRefacciones();
+    } catch (e) {
+      alert("Error: " + e.message);
+    }
+  }
+
+  function volverARefacciones() { verRefacciones(); }
 
   // ═══════════════════════════════════════════════════════════════
   // BUSCADOR TYPEAHEAD
@@ -803,34 +973,71 @@ const App = (() => {
   // REFACCIONES / ALERTAS / PROVEEDORES / UBICACIONES
   // ═══════════════════════════════════════════════════════════════
 
-  async function verRefacciones() {
+    async function verRefacciones() {
     mostrarVista("view-loading");
     document.getElementById("loading-text").textContent = "Cargando refacciones...";
     try {
       const r = await api("listar_refacciones");
       if (!r.ok) throw new Error(r.error);
       cache.refacciones = r.refacciones;
-      const cont = document.getElementById("lista-refacciones");
-      cont.innerHTML = "";
-      if (!r.refacciones.length) {
-        cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin refacciones registradas.</p>";
-      } else {
-        r.refacciones.forEach(x => {
-          const d = document.createElement("div");
-          d.className = "ref-item";
-          d.innerHTML =
-            "<div class='ref-cod'>" + x.codigo + "</div>" +
-            "<div class='ref-info'>min " + x.minimo + " / max " + x.maximo + "</div>" +
-            "<div class='ref-desc'>" + x.descripcion + "</div>" +
-            "<div class='ref-info'>" + x.unidad + " · " + x.categoria + " · " + fmtMoneda(x.pu) + " " + x.moneda + "</div>";
-          cont.appendChild(d);
-        });
-      }
+
+      // Listeners del buscador y botón nueva
+      const inputBuscar = document.getElementById("ref-buscar");
+      inputBuscar.value = "";
+      inputBuscar.oninput = () => filtrarRefacciones();
+      document.getElementById("btn-nueva-refaccion").onclick = () => abrirFormRefaccion(null);
+
+      renderRefacciones(r.refacciones);
       mostrarVista("view-refacciones");
     } catch (e) {
       alert("Error: " + e.message);
       volverAlMenu();
     }
+  }
+
+  function filtrarRefacciones() {
+    const q = normalizar(document.getElementById("ref-buscar").value);
+    const filtrados = cache.refacciones.filter(x =>
+      normalizar(x.codigo).includes(q) || normalizar(x.descripcion).includes(q)
+    );
+    renderRefacciones(filtrados);
+  }
+
+  function renderRefacciones(items) {
+    const cont = document.getElementById("lista-refacciones");
+    cont.innerHTML = "";
+    if (!items.length) {
+      cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin refacciones.</p>";
+      return;
+    }
+    items.forEach(x => {
+      const d = document.createElement("div");
+      d.className = "ref-item";
+      d.innerHTML =
+        "<div class='ref-cod'>" + x.codigo + "</div>" +
+        "<div class='ref-info'>min " + x.minimo + " / max " + x.maximo + "</div>" +
+        "<div class='ref-desc'>" + x.descripcion + "</div>" +
+        "<div class='ref-info'>" + x.unidad + " · " + x.categoria + " · " + fmtMoneda(x.pu) + " " + x.moneda + "</div>";
+
+      const acciones = document.createElement("div");
+      acciones.style.cssText = "margin-top:8px; display:flex; gap:6px;";
+
+      const btnEditar = document.createElement("button");
+      btnEditar.className = "btn-secundario";
+      btnEditar.textContent = "✏️ Editar";
+      btnEditar.onclick = () => abrirFormRefaccion(x.codigo);
+      acciones.appendChild(btnEditar);
+
+      const btnDesactivar = document.createElement("button");
+      btnDesactivar.className = "btn-secundario";
+      btnDesactivar.textContent = "🚫 Desactivar";
+      btnDesactivar.style.color = "#b91c1c";
+      btnDesactivar.onclick = () => desactivarRefaccion(x.codigo);
+      acciones.appendChild(btnDesactivar);
+
+      d.appendChild(acciones);
+      cont.appendChild(d);
+    });
   }
 
   async function verAlertas() {
@@ -946,7 +1153,9 @@ const App = (() => {
     initLogin,
     initApp,
     volverAlMenu,
-    agregarLinea
+    agregarLinea,
+    volverARefacciones,
+    abrirFormRefaccion
   };
 
 })();
