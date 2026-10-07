@@ -233,7 +233,7 @@ label {
   grid-template-columns: 1.4fr 0.8fr 1fr 0.8fr 0.8fr 0.9fr;
   gap: 12px;
   align-items: end;
-  padding-top: 4px;
+  margin-top: 8px;
 }
 
 .linea-grupo-subtotal {
@@ -270,9 +270,9 @@ label {
   font-size: 14px;
   cursor: pointer;
   flex-shrink: 0;
+  margin-bottom: 0;
 }
 .btn-quitar:hover { background: #991b1b; }
-
 /* ═══ BUSCADOR TYPEAHEAD ═══ */
 .buscador-wrapper {
   position: relative;
@@ -292,18 +292,15 @@ label {
   box-shadow: 0 0 0 3px rgba(44,82,130,0.1);
 }
 .buscador-resultados {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  z-index: 1000;
+  position: static;      /* ya no flota, empuja hacia abajo */
   background: #fff;
   border: 1px solid var(--gris-borde);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  max-height: 280px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  max-height: 200px;
   overflow-y: auto;
-  margin-top: 2px;
+  margin-top: 4px;
+  z-index: 10;
 }
 .buscador-item {
   padding: 10px 12px;
