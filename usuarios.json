@@ -1,0 +1,38 @@
+[
+  {
+    "user": "admin",
+    "nombre": "Admin Mantenimiento",
+    "rol": "admin",
+    "permisos": ["TODO"],
+    "salt": "REEMPLAZAR",
+    "hash": "REEMPLAZAR",
+    "activo": true
+  },
+  {
+    "user": "supervisor1",
+    "nombre": "Supervisor Mantenimiento",
+    "rol": "supervisor",
+    "permisos": ["CREAR_OT","ASIGNAR_OT","CERRAR_OT","EDITAR_MOVIMIENTO","VER_REPORTES"],
+    "salt": "REEMPLAZAR",
+    "hash": "REEMPLAZAR",
+    "activo": true
+  },
+  {
+    "user": "tecnico1",
+    "nombre": "Técnico 1",
+    "rol": "tecnico",
+    "permisos": ["VER_OT","REGISTRAR_HORAS","CONSUMIR_MATERIAL"],
+    "salt": "REEMPLAZAR",
+    "hash": "REEMPLAZAR",
+    "activo": true
+  },
+  {
+    "user": "gerencia1",
+    "nombre": "Gerencia",
+    "rol": "gerencia",
+    "permisos": ["VER_COSTOS","EXPORTAR","REABRIR_OT"],
+    "salt": "REEMPLAZAR",
+    "hash": "REEMPLAZAR",
+    "activo": true
+  }
+]

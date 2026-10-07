@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mantenimiento Mediese - Login</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="login-container">
+    <h1>Mantenimiento Mediese</h1>
+    <form id="login-form">
+      <input id="usuario" type="text" placeholder="Usuario" required autocomplete="username" />
+      <input id="password" type="password" placeholder="Contraseña" required autocomplete="current-password" />
+      <button type="submit">Entrar</button>
+      <p id="error-msg" class="error"></p>
+    </form>
+  </div>
+  <script src="app.js"></script>
+  <script>App.initLogin();</script>
+</body>
+</html>

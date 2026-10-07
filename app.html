@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mantenimiento Mediese</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="manifest" href="manifest.json" />
+</head>
+<body>
+  <header>
+    <span id="user-info"></span>
+    <button id="btn-logout">Salir</button>
+  </header>
+
+  <main>
+    <!-- MENÚ -->
+    <section id="view-menu">
+      <h2>Menú</h2>
+      <div class="menu-grid">
+        <button id="btn-stock">Ver stock</button>
+        <button id="btn-entrada">Entrada</button>
+        <button id="btn-salida">Salida</button>
+        <button id="btn-devolucion">Devolución</button>
+        <button id="btn-transferencia">Transferencia</button>
+        <button id="btn-movimientos">Movimientos</button>
+        <button id="btn-refacciones">Refacciones</button>
+        <button id="btn-proveedores">Proveedores</button>
+        <button id="btn-ubicaciones">Ubicaciones</button>
+        <button id="btn-alertas">Alertas stock</button>
+        <button id="btn-reconstruir">Reconstruir stock</button>
+      </div>
+    </section>
+
+    <!-- STOCK -->
+    <section id="view-stock" class="hidden">
+      <h2>Stock actual</h2>
+      <div id="lista-stock"></div>
+      <button onclick="App.volverAlMenu ? App.volverAlMenu() : location.reload()">Volver</button>
+    </section>
+
+    <!-- MOVIMIENTO -->
+    <section id="view-movimiento" class="hidden">
+      <h2 id="mov-titulo"></h2>
+      <input type="hidden" id="mov-tipo" />
+      <input id="mov-referencia" placeholder="Referencia (OT, factura, etc.)" />
+      <div id="grupo-proveedor"><input id="mov-proveedor" placeholder="Proveedor / Cliente" /></div>
+      <div id="grupo-ubicacion-origen">
+        <label>Ubicación origen</label>
+        <select id="mov-ubicacion-origen"></select>
+      </div>
+      <div id="grupo-ubicacion-destino">
+        <label>Ubicación destino</label>
+        <select id="mov-ubicacion-destino"></select>
+      </div>
+      <h3>Líneas</h3>
+      <div id="mov-lineas"></div>
+      <button type="button" id="btn-agregar-linea" onclick="document.getElementById('mov-lineas') && window.AgregarLinea && window.AgregarLinea()">+ Agregar línea</button>
+      <textarea id="mov-notas" placeholder="Notas"></textarea>
+      <button id="btn-guardar-mov">Guardar</button>
+      <p id="mov-status"></p>
+    </section>
+
+    <!-- MOVIMIENTOS -->
+    <section id="view-movimientos" class="hidden">
+      <h2>Movimientos</h2>
+      <div id="lista-movimientos"></div>
+    </section>
+
+    <!-- REFACCIONES -->
+    <section id="view-refacciones" class="hidden">
+      <h2>Refacciones</h2>
+      <div id="lista-refacciones"></div>
+    </section>
+
+    <!-- ALERTAS -->
+    <section id="view-alertas" class="hidden">
+      <h2>Alertas de stock</h2>
+      <div id="lista-alertas"></div>
+    </section>
+
+    <!-- PROVEEDORES -->
+    <section id="view-proveedores" class="hidden">
+      <h2>Proveedores</h2>
+      <div id="lista-proveedores"></div>
+    </section>
+
+    <!-- UBICACIONES -->
+    <section id="view-ubicaciones" class="hidden">
+      <h2>Ubicaciones</h2>
+      <div id="lista-ubicaciones"></div>
+    </section>
+
+    <!-- LOADING -->
+    <section id="view-loading" class="hidden">
+      <p id="loading-text">Cargando...</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+  <script>App.initApp();</script>
+</body>
+</html>
