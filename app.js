@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════
-// SISTEMA DE MANTENIMIENTO MEDIESE - FRONTEND v1.2
+// SISTEMA DE MANTENIMIENTO MEDIESE - FRONTEND v1.3
 // Fase 1: Almacén de mantenimiento
-// Con buscadores tipo typeahead (refacción, proveedor, lote)
+// Línea de captura rediseñada como tarjeta
 // ═══════════════════════════════════════════════════════════════════
 
 const CONFIG = {
@@ -35,6 +35,10 @@ const App = (() => {
   function normalizar(t) {
     if (!t) return "";
     return String(t).trim().toUpperCase();
+  }
+
+  function fmtMoneda(n) {
+    return "$" + Number(n || 0).toFixed(2);
   }
 
   async function pbkdf2Hash(password, saltHex) {
@@ -163,9 +167,7 @@ const App = (() => {
     if (rol === "tecnico") {
       ocultar("btn-entrada"); ocultar("btn-transferencia"); ocultar("btn-refacciones");
       ocultar("btn-proveedores"); ocultar("btn-ubicaciones"); ocultar("btn-reconstruir");
-    } else if (rol === "supervisor") {
-      ocultar("btn-reconstruir");
-    } else if (rol === "gerencia") {
+    } else if (rol === "supervisor" || rol === "gerencia") {
       ocultar("btn-reconstruir");
     }
   }
@@ -184,20 +186,9 @@ const App = (() => {
   function volverAlMenu() { mostrarVista("view-menu"); }
 
   // ═══════════════════════════════════════════════════════════════
-  // BUSCADORES TIPO TYPEAHEAD
+  // BUSCADOR TYPEAHEAD
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Crea un buscador tipo typeahead.
-   * @param {Object} opts
-   *   - placeholder: texto del input
-   *   - obtenerDatos: función async que devuelve array de items
-   *   - filtrar: función (item, query) => boolean
-   *   - renderItem: función (item) => string HTML
-   *   - onSelect: función (item) => void
-   *   - valorInicial: string opcional para prellenar
-   *   - permitirLibre: boolean, si true, deja escribir valores que no están en la lista (para lotes nuevos)
-   */
   function crearBuscador(opts) {
     const wrapper = document.createElement("div");
     wrapper.className = "buscador-wrapper";
@@ -265,18 +256,17 @@ const App = (() => {
       renderResultados(q);
     });
 
-    // Cerrar dropdown al hacer clic fuera
     document.addEventListener("click", (e) => {
       if (!wrapper.contains(e.target)) {
         dropdown.classList.add("hidden");
       }
     });
 
-    // Métodos expuestos
     wrapper.getValue = () => input.value;
     wrapper.getSeleccionado = () => seleccionado;
     wrapper.setValue = (v) => { input.value = v; };
     wrapper.limpiar = () => { input.value = ""; seleccionado = null; };
+    wrapper.getInput = () => input;
 
     return wrapper;
   }
@@ -349,6 +339,7 @@ const App = (() => {
     }
 
     await cargarUbicacionesSelects();
+    await cargarProveedoresBuscador();
     await agregarLinea();
     mostrarVista("view-movimiento");
   }
@@ -367,6 +358,38 @@ const App = (() => {
     if (selDest) selDest.innerHTML = opts;
   }
 
+  async function cargarProveedoresBuscador() {
+    if (!cache.proveedores) {
+      const r = await api("listar_proveedores");
+      cache.proveedores = r.proveedores || [];
+    }
+    const contenedor = document.getElementById("mov-proveedor-container");
+    if (!contenedor) return;
+    contenedor.innerHTML = "";
+
+    const buscador = crearBuscador({
+      placeholder: "Buscar proveedor por código o razón social...",
+      obtenerDatos: async () => cache.proveedores,
+      filtrar: (item, q) =>
+        normalizar(item.codigo).includes(q) ||
+        normalizar(item.razon_social).includes(q),
+      renderItem: (item) =>
+        "<div class='buscador-cod'>" + item.codigo + "</div>" +
+        "<div class='buscador-desc'>" + item.razon_social + "</div>" +
+        "<div class='buscador-meta'>" + item.moneda + " · " + (item.contacto || "Sin contacto") + "</div>",
+      renderSeleccion: (item) => item.razon_social,
+      onSelect: (item) => {
+        contenedor.dataset.codigo = item.codigo;
+        contenedor.dataset.razon = item.razon_social;
+      }
+    });
+    contenedor.appendChild(buscador);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // LÍNEA DE MOVIMIENTO (tarjeta rediseñada)
+  // ═══════════════════════════════════════════════════════════════
+
   async function agregarLinea() {
     if (!cache.refacciones) {
       const r = await api("listar_refacciones");
@@ -376,20 +399,24 @@ const App = (() => {
       const r = await api("listar_ubicaciones");
       cache.ubicaciones = r.ubicaciones || [];
     }
-    if (!cache.proveedores) {
-      const r = await api("listar_proveedores");
-      cache.proveedores = r.proveedores || [];
-    }
 
     const cont = document.getElementById("mov-lineas");
     if (!cont) return;
 
-    const div = document.createElement("div");
-    div.className = "linea";
-
     const tipo = document.getElementById("mov-tipo").value;
 
-    // ─── Buscador de refacción ───
+    // ─── Tarjeta ───
+    const card = document.createElement("div");
+    card.className = "linea-card";
+
+    // ═══ FILA 1: Refacción + botón X ═══
+    const fila1 = document.createElement("div");
+    fila1.className = "linea-fila-1";
+
+    const grupoRef = document.createElement("div");
+    grupoRef.className = "linea-grupo linea-grupo-ref";
+    const labelRef = document.createElement("label");
+    labelRef.textContent = "Refacción";
     const buscadorRef = crearBuscador({
       placeholder: "Código o descripción...",
       obtenerDatos: async () => cache.refacciones,
@@ -402,24 +429,51 @@ const App = (() => {
         "<div class='buscador-meta'>" + item.unidad + " · " + item.categoria + "</div>",
       renderSeleccion: (item) => item.codigo + " - " + item.descripcion,
       onSelect: (item) => {
-        // Autollenar PU, IVA, lote por defecto, unidad
-        div.dataset.codigo = item.codigo;
-        div.dataset.descripcion = item.descripcion;
-        div.dataset.unidad = item.unidad;
-        div.dataset.moneda = item.moneda;
-        const puInput = div.querySelector(".lin-pu");
-        const ivaInput = div.querySelector(".lin-iva");
-        if (puInput) puInput.value = item.pu || 0;
-        if (ivaInput) ivaInput.value = item.iva || 0;
+        card.dataset.codigo = item.codigo;
+        card.dataset.descripcion = item.descripcion;
+        card.dataset.unidad = item.unidad;
+        card.dataset.moneda = item.moneda;
+        card.querySelector(".lin-pu").value = item.pu || 0;
+        card.querySelector(".lin-iva").value = item.iva || 0;
+        card.querySelector(".lin-unidad-label").textContent = item.unidad || "";
+        // Autoseleccionar ubicación por defecto
+        if (item.ubicacion_defecto) {
+          const selUbic = card.querySelector(".lin-ubicacion");
+          if (selUbic) selUbic.value = item.ubicacion_defecto;
+        }
         // Cargar lotes disponibles
-        cargarLotesDeRefaccion(div, item.codigo);
+        cargarLotesDeRefaccion(card, item.codigo);
+        recalcularSubtotal(card);
       }
     });
+    grupoRef.appendChild(labelRef);
+    grupoRef.appendChild(buscadorRef);
 
-    // ─── Buscador de lote ───
+    const btnX = document.createElement("button");
+    btnX.type = "button";
+    btnX.className = "btn-quitar";
+    btnX.textContent = "✕";
+    btnX.title = "Quitar línea";
+    btnX.addEventListener("click", () => {
+      card.remove();
+      recalcularTotalMovimiento();
+    });
+
+    fila1.appendChild(grupoRef);
+    fila1.appendChild(btnX);
+
+    // ═══ FILA 2: Lote | Cantidad | Ubicación | PU | IVA | Subtotal ═══
+    const fila2 = document.createElement("div");
+    fila2.className = "linea-fila-2";
+
+    // Lote
+    const grupoLote = document.createElement("div");
+    grupoLote.className = "linea-grupo";
+    const labelLote = document.createElement("label");
+    labelLote.textContent = "Lote";
     const buscadorLote = crearBuscador({
       placeholder: "Lote",
-      obtenerDatos: async () => div._lotesDisponibles || [],
+      obtenerDatos: async () => card._lotesDisponibles || [],
       filtrar: (item, q) => normalizar(item.lote).includes(q),
       renderItem: (item) =>
         "<div class='buscador-cod'>" + item.lote + "</div>" +
@@ -427,80 +481,174 @@ const App = (() => {
         "<div class='buscador-meta'>" + item.ubicacion + "</div>",
       renderSeleccion: (item) => item.lote,
       onSelect: (item) => {
-        // Al elegir lote, prellenar ubicación si aplica
         if (item.ubicacion) {
-          const selUbic = div.querySelector(".lin-ubicacion");
+          const selUbic = card.querySelector(".lin-ubicacion");
           if (selUbic) selUbic.value = item.ubicacion;
         }
       }
     });
+    buscadorLote.getInput().classList.add("lin-lote");
+    grupoLote.appendChild(labelLote);
+    grupoLote.appendChild(buscadorLote);
 
-    // ─── Select de ubicación ───
-    const optsUbic = cache.ubicaciones.map(u =>
-      "<option value='" + u.codigo + "'>" + u.codigo + "</option>"
-    ).join("");
+    // Cantidad
+    const grupoCant = document.createElement("div");
+    grupoCant.className = "linea-grupo linea-grupo-cant";
+    const labelCant = document.createElement("label");
+    labelCant.textContent = "Cantidad";
+    const inputCant = document.createElement("input");
+    inputCant.className = "lin-cantidad";
+    inputCant.type = "number";
+    inputCant.step = "0.01";
+    inputCant.placeholder = "0";
+    inputCant.addEventListener("input", () => recalcularSubtotal(card));
+    grupoCant.appendChild(labelCant);
+    grupoCant.appendChild(inputCant);
+
+    // Ubicación
+    const grupoUbic = document.createElement("div");
+    grupoUbic.className = "linea-grupo";
+    const labelUbic = document.createElement("label");
+    labelUbic.textContent = "Ubicación";
     const selUbic = document.createElement("select");
     selUbic.className = "lin-ubicacion";
-    selUbic.innerHTML = optsUbic;
+    selUbic.innerHTML = cache.ubicaciones.map(u =>
+      "<option value='" + u.codigo + "'>" + u.codigo + "</option>"
+    ).join("");
+    grupoUbic.appendChild(labelUbic);
+    grupoUbic.appendChild(selUbic);
 
-    // ─── Cantidad, PU, IVA ───
-    const inputCantidad = document.createElement("input");
-    inputCantidad.className = "lin-cantidad";
-    inputCantidad.type = "number";
-    inputCantidad.placeholder = "Cantidad";
-    inputCantidad.step = "0.01";
-
+    // PU
+    const grupoPu = document.createElement("div");
+    grupoPu.className = "linea-grupo linea-grupo-precio";
+    const labelPu = document.createElement("label");
+    labelPu.textContent = "PU";
     const inputPu = document.createElement("input");
     inputPu.className = "lin-pu";
     inputPu.type = "number";
-    inputPu.placeholder = "PU";
     inputPu.step = "0.01";
+    inputPu.placeholder = "0";
+    inputPu.addEventListener("input", () => recalcularSubtotal(card));
+    grupoPu.appendChild(labelPu);
+    grupoPu.appendChild(inputPu);
 
+    // IVA
+    const grupoIva = document.createElement("div");
+    grupoIva.className = "linea-grupo linea-grupo-precio";
+    const labelIva = document.createElement("label");
+    labelIva.textContent = "IVA";
     const inputIva = document.createElement("input");
     inputIva.className = "lin-iva";
     inputIva.type = "number";
-    inputIva.placeholder = "IVA";
     inputIva.step = "0.01";
+    inputIva.placeholder = "0";
+    inputIva.addEventListener("input", () => recalcularSubtotal(card));
+    grupoIva.appendChild(labelIva);
+    grupoIva.appendChild(inputIva);
 
-    const btnQuitar = document.createElement("button");
-    btnQuitar.type = "button";
-    btnQuitar.className = "btn-quitar";
-    btnQuitar.textContent = "X";
-    btnQuitar.addEventListener("click", () => div.remove());
+    // Subtotal (display)
+    const grupoSub = document.createElement("div");
+    grupoSub.className = "linea-grupo linea-grupo-subtotal";
+    const labelSub = document.createElement("label");
+    labelSub.textContent = "Subtotal";
+    const spanSub = document.createElement("span");
+    spanSub.className = "lin-subtotal";
+    spanSub.textContent = "$0.00";
+    grupoSub.appendChild(labelSub);
+    grupoSub.appendChild(spanSub);
 
-    // ─── Ensamblar ───
-    div.appendChild(buscadorRef);
-    div.appendChild(buscadorLote);
-    div.appendChild(inputCantidad);
-    div.appendChild(selUbic);
-    div.appendChild(inputPu);
-    div.appendChild(inputIva);
-    div.appendChild(btnQuitar);
+    fila2.appendChild(grupoLote);
+    fila2.appendChild(grupoCant);
+    fila2.appendChild(grupoUbic);
+    fila2.appendChild(grupoPu);
+    fila2.appendChild(grupoIva);
+    fila2.appendChild(grupoSub);
 
-    cont.appendChild(div);
+    // ═══ FILA 3: acciones (Duplicar) ═══
+    const fila3 = document.createElement("div");
+    fila3.className = "linea-acciones";
+    const btnDuplicar = document.createElement("button");
+    btnDuplicar.type = "button";
+    btnDuplicar.className = "btn-secundario";
+    btnDuplicar.textContent = "Duplicar";
+    btnDuplicar.addEventListener("click", () => duplicarLinea(card));
+    fila3.appendChild(btnDuplicar);
+
+    // ═══ Ensamblar ═══
+    card.appendChild(fila1);
+    card.appendChild(fila2);
+    card.appendChild(fila3);
+
+    cont.appendChild(card);
+    recalcularTotalMovimiento();
   }
 
-  /**
-   * Carga lotes disponibles de una refacción al div de la línea.
-   * Solo aplica para SALIDA, DEVOLUCION, TRANSFERENCIA (no para ENTRADA).
-   */
-  async function cargarLotesDeRefaccion(div, codigo) {
+  function recalcularSubtotal(card) {
+    const cant = Number(card.querySelector(".lin-cantidad").value) || 0;
+    const pu = Number(card.querySelector(".lin-pu").value) || 0;
+    const iva = Number(card.querySelector(".lin-iva").value) || 0;
+    const subtotal = (pu + iva) * cant;
+    card.querySelector(".lin-subtotal").textContent = fmtMoneda(subtotal);
+    recalcularTotalMovimiento();
+  }
+
+  function recalcularTotalMovimiento() {
+    let total = 0;
+    document.querySelectorAll("#mov-lineas .linea-card").forEach(card => {
+      const cant = Number(card.querySelector(".lin-cantidad").value) || 0;
+      const pu = Number(card.querySelector(".lin-pu").value) || 0;
+      const iva = Number(card.querySelector(".lin-iva").value) || 0;
+      total += (pu + iva) * cant;
+    });
+    const cont = document.getElementById("mov-total");
+    if (cont) cont.textContent = fmtMoneda(total);
+  }
+
+  function duplicarLinea(card) {
+    const codigo = card.dataset.codigo;
+    const descripcion = card.dataset.descripcion;
+    const lote = card.querySelector(".lin-lote") ? card.querySelector(".lin-lote").value : "";
+    const ubicacion = card.querySelector(".lin-ubicacion").value;
+    const pu = card.querySelector(".lin-pu").value;
+    const iva = card.querySelector(".lin-iva").value;
+
+    // Crear nueva línea precargada
+    agregarLinea().then(() => {
+      const cont = document.getElementById("mov-lineas");
+      const nueva = cont.lastElementChild;
+      if (!nueva) return;
+      // Prellenar
+      const refBuscador = nueva.querySelector(".buscador-wrapper");
+      if (refBuscador && refBuscador.setValue) {
+        refBuscador.setValue(codigo + " - " + descripcion);
+        nueva.dataset.codigo = codigo;
+        nueva.dataset.descripcion = descripcion;
+      }
+      const loteBuscador = nueva.querySelectorAll(".buscador-wrapper")[1];
+      if (loteBuscador && loteBuscador.setValue) loteBuscador.setValue(lote);
+      nueva.querySelector(".lin-ubicacion").value = ubicacion;
+      nueva.querySelector(".lin-pu").value = pu;
+      nueva.querySelector(".lin-iva").value = iva;
+      // No copiamos la cantidad: queda en 0 para que el usuario la escriba
+    });
+  }
+
+  async function cargarLotesDeRefaccion(card, codigo) {
     const tipo = document.getElementById("mov-tipo").value;
     if (tipo === "ENTRADA") {
-      // En entrada, el lote es libre
-      div._lotesDisponibles = [];
+      card._lotesDisponibles = [];
       return;
     }
     try {
       const r = await api("lotes_disponibles", { codigo: codigo });
-      div._lotesDisponibles = (r.lotes || []).map(l => ({
+      card._lotesDisponibles = (r.lotes || []).map(l => ({
         lote: l.lote,
         saldo: l.saldo,
         unidad: l.unidad,
         ubicacion: l.ubicacion
       }));
     } catch (e) {
-      div._lotesDisponibles = [];
+      card._lotesDisponibles = [];
     }
   }
 
@@ -508,19 +656,22 @@ const App = (() => {
     const tipo = document.getElementById("mov-tipo").value;
     const lineas = [];
 
-    const lineasDom = document.querySelectorAll("#mov-lineas .linea");
-    for (const l of lineasDom) {
-      const refBuscador = l.querySelector(".buscador-wrapper");
-      const loteBuscador = l.querySelectorAll(".buscador-wrapper")[1];
-      const codigo = (refBuscador && refBuscador.getSeleccionado())
-        ? refBuscador.getSeleccionado().codigo
-        : "";
-      const descripcion = l.dataset.descripcion || "";
-      const unidad = l.dataset.unidad || "PZ";
-      const lote = loteBuscador ? loteBuscador.getValue().trim() : "SIN_LOTE";
+    const cards = document.querySelectorAll("#mov-lineas .linea-card");
+    for (const card of cards) {
+      const codigo = card.dataset.codigo || "";
+      const descripcion = card.dataset.descripcion || "";
+      const unidad = card.dataset.unidad || "PZ";
+      const loteInput = card.querySelector(".lin-lote");
+      const lote = loteInput ? loteInput.value.trim() : "SIN_LOTE";
+      const cantidad = Number(card.querySelector(".lin-cantidad").value) || 0;
 
       if (!codigo) {
         document.getElementById("mov-status").textContent = "❌ Selecciona una refacción válida en cada línea";
+        document.getElementById("mov-status").className = "send-status error";
+        return;
+      }
+      if (cantidad <= 0) {
+        document.getElementById("mov-status").textContent = "❌ Cada línea debe tener cantidad > 0";
         document.getElementById("mov-status").className = "send-status error";
         return;
       }
@@ -529,25 +680,30 @@ const App = (() => {
         codigo: codigo,
         descripcion: descripcion,
         lote: lote || "SIN_LOTE",
-        cantidad: Number(l.querySelector(".lin-cantidad").value) || 0,
+        cantidad: cantidad,
         unidad: unidad,
-        ubicacion: l.querySelector(".lin-ubicacion").value,
-        pu: Number(l.querySelector(".lin-pu").value) || 0,
-        iva: Number(l.querySelector(".lin-iva").value) || 0,
-        moneda: l.dataset.moneda || "MXN"
+        ubicacion: card.querySelector(".lin-ubicacion").value,
+        pu: Number(card.querySelector(".lin-pu").value) || 0,
+        iva: Number(card.querySelector(".lin-iva").value) || 0,
+        moneda: card.dataset.moneda || "MXN"
       });
     }
 
-    if (lineas.length === 0 || lineas.every(l => l.cantidad <= 0)) {
-      document.getElementById("mov-status").textContent = "❌ Agrega al menos una línea con cantidad";
+    if (lineas.length === 0) {
+      document.getElementById("mov-status").textContent = "❌ Agrega al menos una línea";
       document.getElementById("mov-status").className = "send-status error";
       return;
     }
 
+    const provCont = document.getElementById("mov-proveedor-container");
+    const proveedorTexto = provCont && provCont.dataset.razon
+      ? provCont.dataset.razon
+      : (provCont ? provCont.querySelector(".buscador-input").value : "");
+
     const body = {
       tipo_movimiento: tipo,
       referencia: document.getElementById("mov-referencia").value.trim(),
-      proveedor_cliente: document.getElementById("mov-proveedor").value.trim(),
+      proveedor_cliente: proveedorTexto,
       ubicacion_origen: document.getElementById("mov-ubicacion-origen").value,
       ubicacion_destino: document.getElementById("mov-ubicacion-destino").value,
       notas: document.getElementById("mov-notas").value.trim(),
@@ -591,7 +747,7 @@ const App = (() => {
           d.className = "mov-item";
           d.innerHTML =
             "<div class='mov-id'>" + m.id + "</div>" +
-            "<div class='mov-total'>$" + Number(m.total).toFixed(2) + "</div>" +
+            "<div class='mov-total'>" + fmtMoneda(m.total) + "</div>" +
             "<div class='mov-tipo'>" + m.tipo + " · " + m.fecha + " " + m.hora + "</div>" +
             "<div class='mov-user'>" + m.nombre_usuario + " · " + m.estado + "</div>";
           cont.appendChild(d);
@@ -605,7 +761,7 @@ const App = (() => {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // REFACCIONES
+  // REFACCIONES / ALERTAS / PROVEEDORES / UBICACIONES
   // ═══════════════════════════════════════════════════════════════
 
   async function verRefacciones() {
@@ -627,7 +783,7 @@ const App = (() => {
             "<div class='ref-cod'>" + x.codigo + "</div>" +
             "<div class='ref-info'>min " + x.minimo + " / max " + x.maximo + "</div>" +
             "<div class='ref-desc'>" + x.descripcion + "</div>" +
-            "<div class='ref-info'>" + x.unidad + " · " + x.categoria + " · $" + x.pu + " " + x.moneda + "</div>";
+            "<div class='ref-info'>" + x.unidad + " · " + x.categoria + " · " + fmtMoneda(x.pu) + " " + x.moneda + "</div>";
           cont.appendChild(d);
         });
       }
@@ -637,10 +793,6 @@ const App = (() => {
       volverAlMenu();
     }
   }
-
-  // ═══════════════════════════════════════════════════════════════
-  // ALERTAS
-  // ═══════════════════════════════════════════════════════════════
 
   async function verAlertas() {
     mostrarVista("view-loading");
@@ -670,10 +822,6 @@ const App = (() => {
       volverAlMenu();
     }
   }
-
-  // ═══════════════════════════════════════════════════════════════
-  // PROVEEDORES
-  // ═══════════════════════════════════════════════════════════════
 
   async function verProveedores() {
     mostrarVista("view-loading");
@@ -705,10 +853,6 @@ const App = (() => {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // UBICACIONES
-  // ═══════════════════════════════════════════════════════════════
-
   async function verUbicaciones() {
     mostrarVista("view-loading");
     document.getElementById("loading-text").textContent = "Cargando ubicaciones...";
@@ -738,10 +882,6 @@ const App = (() => {
       volverAlMenu();
     }
   }
-
-  // ═══════════════════════════════════════════════════════════════
-  // RECONSTRUIR STOCK
-  // ═══════════════════════════════════════════════════════════════
 
   async function reconstruirStock() {
     if (usuarioActual.rol !== "admin") return;
