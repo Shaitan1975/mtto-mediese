@@ -189,7 +189,7 @@ const App = (() => {
   // BUSCADOR TYPEAHEAD
   // ═══════════════════════════════════════════════════════════════
 
-  function crearBuscador(opts) {
+     function crearBuscador(opts) {
     const wrapper = document.createElement("div");
     wrapper.className = "buscador-wrapper";
 
@@ -198,6 +198,7 @@ const App = (() => {
     input.className = "buscador-input";
     input.placeholder = opts.placeholder || "Buscar...";
     input.autocomplete = "off";
+    input.spellcheck = false;
     if (opts.valorInicial) input.value = opts.valorInicial;
 
     const dropdown = document.createElement("div");
@@ -208,6 +209,17 @@ const App = (() => {
 
     let datos = [];
     let seleccionado = null;
+    let dropdownAbierto = false;
+
+    function abrirDropdown() {
+      dropdown.classList.remove("hidden");
+      dropdownAbierto = true;
+    }
+
+    function cerrarDropdown() {
+      dropdown.classList.add("hidden");
+      dropdownAbierto = false;
+    }
 
     async function cargarDatos() {
       if (datos.length === 0) {
@@ -217,59 +229,107 @@ const App = (() => {
     }
 
     function renderResultados(query) {
+      if (!query || query.length < 1) {
+        cerrarDropdown();
+        return;
+      }
       const lista = datos.filter(d => opts.filtrar(d, query)).slice(0, 20);
       dropdown.innerHTML = "";
       if (lista.length === 0) {
         dropdown.innerHTML = "<div class='buscador-vacio'>Sin resultados</div>";
-        dropdown.classList.remove("hidden");
+        abrirDropdown();
         return;
       }
       lista.forEach(item => {
         const div = document.createElement("div");
         div.className = "buscador-item";
         div.innerHTML = opts.renderItem(item);
-        div.addEventListener("click", () => {
+        // Usar mousedown en vez de click para que se ejecute antes del blur del input
+        div.addEventListener("mousedown", (ev) => {
+          ev.preventDefault(); // evita que el input pierda el foco antes de procesar
           seleccionado = item;
-          input.value = opts.renderSeleccion ? opts.renderSeleccion(item) : item.codigo || "";
-          dropdown.classList.add("hidden");
+          input.value = opts.renderSeleccion ? opts.renderSeleccion(item) : (item.codigo || "");
+          cerrarDropdown();
           if (opts.onSelect) opts.onSelect(item);
         });
         dropdown.appendChild(div);
       });
-      dropdown.classList.remove("hidden");
+      abrirDropdown();
     }
 
-    input.addEventListener("input", async (e) => {
-      const q = normalizar(e.target.value);
+    // ─── Manejo de escritura ───
+    async function manejarInput() {
+      const q = normalizar(input.value);
       if (q.length < 1) {
-        dropdown.classList.add("hidden");
+        seleccionado = null;
+        cerrarDropdown();
         return;
       }
       await cargarDatos();
       renderResultados(q);
-    });
+    }
 
+    input.addEventListener("input", manejarInput);
+    input.addEventListener("keyup", (e) => {
+      // Ignorar teclas que no cambian el valor
+      if (["Shift", "Control", "Alt", "Meta", "CapsLock", "Tab"].includes(e.key)) return;
+      manejarInput();
+    });
+    input.addEventListener("change", manejarInput);
+    input.addEventListener("paste", () => setTimeout(manejarInput, 0));
+
+    // ─── Focus: reabrir solo si hay texto y no hay selección ───
     input.addEventListener("focus", async () => {
       const q = normalizar(input.value);
       if (q.length < 1) return;
+      if (seleccionado) return; // ya hay algo seleccionado, no reabrir
       await cargarDatos();
       renderResultados(q);
     });
 
-    document.addEventListener("click", (e) => {
-      if (!wrapper.contains(e.target)) {
-        dropdown.classList.add("hidden");
+    // ─── Blur: cerrar dropdown (con pequeño delay para permitir mousedown) ───
+    input.addEventListener("blur", () => {
+      setTimeout(() => {
+        if (!wrapper.contains(document.activeElement)) {
+          cerrarDropdown();
+        }
+      }, 150);
+    });
+
+    // ─── Escape: cerrar ───
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        cerrarDropdown();
+        input.blur();
+      }
+      if (e.key === "Enter" && dropdownAbierto) {
+        // Seleccionar el primer resultado visible
+        const primero = dropdown.querySelector(".buscador-item");
+        if (primero) {
+          e.preventDefault();
+          primero.dispatchEvent(new Event("mousedown"));
+        }
       }
     });
 
+    // ─── Cerrar al hacer clic fuera (por si acaso) ───
+    document.addEventListener("click", (e) => {
+      if (!wrapper.contains(e.target)) {
+        cerrarDropdown();
+      }
+    });
+
+    // ─── Métodos expuestos ───
     wrapper.getValue = () => input.value;
     wrapper.getSeleccionado = () => seleccionado;
     wrapper.setValue = (v) => { input.value = v; };
-    wrapper.limpiar = () => { input.value = ""; seleccionado = null; };
+    wrapper.limpiar = () => { input.value = ""; seleccionado = null; cerrarDropdown(); };
     wrapper.getInput = () => input;
 
     return wrapper;
   }
+
+    
 
   // ═══════════════════════════════════════════════════════════════
   // STOCK
