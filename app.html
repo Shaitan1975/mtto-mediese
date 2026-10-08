@@ -99,16 +99,25 @@
     <!-- PROVEEDORES -->
     <section id="view-proveedores" class="hidden">
       <h2>Proveedores</h2>
-      <div id="lista-proveedores"></div>
-      <button class="btn-primary" onclick="App.volverAlMenu()">Volver</button>
-    </section>
+      <div style="text-align:right; margin-bottom:12px;">
+      <button class="btn-primary" id="btn-nuevo-proveedor">+ Nuevo proveedor</button>
+    </div>
+      
+  <input id="prov-buscar" placeholder="Buscar por código o razón social..." style="margin-bottom:12px;" />
+  <div id="lista-proveedores"></div>
+  <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
+</section>
 
     <!-- UBICACIONES -->
     <section id="view-ubicaciones" class="hidden">
-      <h2>Ubicaciones</h2>
-      <div id="lista-ubicaciones"></div>
-      <button class="btn-primary" onclick="App.volverAlMenu()">Volver</button>
-    </section>
+  <h2>Ubicaciones</h2>
+  <div style="text-align:right; margin-bottom:12px;">
+    <button class="btn-primary" id="btn-nueva-ubicacion">+ Nueva ubicación</button>
+  </div>
+  <input id="ubic-buscar" placeholder="Buscar por código o nombre..." style="margin-bottom:12px;" />
+  <div id="lista-ubicaciones"></div>
+  <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
+</section>
 
     <!-- FORMULARIO REFACCIÓN -->
     <section id="view-refaccion-form" class="hidden">
