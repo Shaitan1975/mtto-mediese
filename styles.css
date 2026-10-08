@@ -90,7 +90,7 @@ header button {
 header button:hover { background: rgba(255,255,255,0.25); }
 
 /* ═══ MAIN ═══ */
-main { max-width: 960px; margin: 20px auto; padding: 0 16px 60px; }
+main { max-width: 960px; margin: 20px auto; padding: 20px 16px 60px; }
 main h2 { font-size: 20px; color: var(--azul); margin-bottom: 16px; }
 main h3 { font-size: 16px; margin: 20px 0 8px; color: var(--texto); }
 
@@ -380,4 +380,40 @@ label {
   .form-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HEADER STICKY + AJUSTES VISUALES
+   ═══════════════════════════════════════════════════════════════ */
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+main {
+  padding-top: 24px;
+}
+
+main h2 {
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+
+/* Asegurar que los formularios tengan buen espaciado */
+#view-refaccion-form,
+#view-proveedor-form,
+#view-ubicacion-form,
+#view-movimiento {
+  padding-top: 8px;
+}
+
+/* Inputs deshabilitados (código en modo edición) */
+input:disabled,
+input[disabled] {
+  background: #f3f4f6;
+  color: #6b7280;
+  cursor: not-allowed;
 }
