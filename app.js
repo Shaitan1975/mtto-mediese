@@ -175,10 +175,15 @@ const App = (() => {
     }
   }
 
-  function mostrarVista(id) {
-    ["view-menu","view-stock","view-movimiento","view-movimientos",
-     "view-refacciones","view-alertas","view-proveedores","view-ubicaciones",
-     "view-loading"].forEach(v => {
+    function mostrarVista(id) {
+    [
+      "view-menu", "view-stock", "view-movimiento", "view-movimientos",
+      "view-refacciones", "view-refaccion-form",
+      "view-alertas",
+      "view-proveedores", "view-proveedor-form",
+      "view-ubicaciones", "view-ubicacion-form",
+      "view-loading"
+    ].forEach(v => {
       const el = document.getElementById(v);
       if (el) el.classList.add("hidden");
     });
@@ -942,6 +947,23 @@ const App = (() => {
     }
   }
 
+  async function reconstruirStock() {
+    if (usuarioActual.rol !== "admin") return;
+    if (!confirm("¿Reconstruir stock desde movimientos?\n\nEsto recalcula STOCK_ACTUAL desde cero. Puede tardar unos segundos.")) return;
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Reconstruyendo stock...";
+    try {
+      const r = await api("reconstruir_stock", {}, "POST");
+      if (!r.ok) throw new Error(r.error);
+      alert("✅ " + r.total + " items reconstruidos");
+      volverAlMenu();
+    } catch (e) {
+      alert("Error: " + e.message);
+      volverAlMenu();
+    }
+  }
+
+  
   async function verMovimientos() {
     mostrarVista("view-loading");
     document.getElementById("loading-text").textContent = "Cargando movimientos...";
