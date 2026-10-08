@@ -89,36 +89,6 @@
       <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
     </section>
 
-    <!-- ALERTAS -->
-    <section id="view-alertas" class="hidden">
-      <h2>Alertas de stock</h2>
-      <div id="lista-alertas"></div>
-      <button class="btn-primary" onclick="App.volverAlMenu()">Volver</button>
-    </section>
-
-    <!-- PROVEEDORES -->
-    <section id="view-proveedores" class="hidden">
-      <h2>Proveedores</h2>
-      <div style="text-align:right; margin-bottom:12px;">
-      <button class="btn-primary" id="btn-nuevo-proveedor">+ Nuevo proveedor</button>
-    </div>
-      
-  <input id="prov-buscar" placeholder="Buscar por código o razón social..." style="margin-bottom:12px;" />
-  <div id="lista-proveedores"></div>
-  <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
-</section>
-
-    <!-- UBICACIONES -->
-    <section id="view-ubicaciones" class="hidden">
-  <h2>Ubicaciones</h2>
-  <div style="text-align:right; margin-bottom:12px;">
-    <button class="btn-primary" id="btn-nueva-ubicacion">+ Nueva ubicación</button>
-  </div>
-  <input id="ubic-buscar" placeholder="Buscar por código o nombre..." style="margin-bottom:12px;" />
-  <div id="lista-ubicaciones"></div>
-  <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
-</section>
-
     <!-- FORMULARIO REFACCIÓN -->
     <section id="view-refaccion-form" class="hidden">
       <h2 id="ref-form-titulo">Nueva refacción</h2>
@@ -220,18 +190,14 @@
       </div>
     </section>
 
-    <!-- LOADING -->
-    <section id="view-loading" class="hidden">
-      <p id="loading-text" style="text-align:center;padding:40px;color:#666;">Cargando...</p>
+    <!-- ALERTAS -->
+    <section id="view-alertas" class="hidden">
+      <h2>Alertas de stock</h2>
+      <div id="lista-alertas"></div>
+      <button class="btn-primary" onclick="App.volverAlMenu()">Volver</button>
     </section>
-  </main>
 
-  <script src="app.js"></script>
-  <script>App.initApp();</script>
-</body>
-</html>
-
-    <!-- PROVEEDORES (modificado) -->
+    <!-- PROVEEDORES -->
     <section id="view-proveedores" class="hidden">
       <h2>Proveedores</h2>
       <div style="text-align:right; margin-bottom:12px;">
@@ -301,7 +267,7 @@
       </div>
     </section>
 
-    <!-- UBICACIONES (modificado) -->
+    <!-- UBICACIONES -->
     <section id="view-ubicaciones" class="hidden">
       <h2>Ubicaciones</h2>
       <div style="text-align:right; margin-bottom:12px;">
@@ -350,3 +316,14 @@
         <button class="btn-primary" id="btn-guardar-ubicacion">Guardar</button>
       </div>
     </section>
+
+    <!-- LOADING -->
+    <section id="view-loading" class="hidden">
+      <p id="loading-text" style="text-align:center;padding:40px;color:#666;">Cargando...</p>
+    </section>
+  </main>
+
+  <script src="app.js?v=20261008"></script>
+  <script>App.initApp();</script>
+</body>
+</html>
