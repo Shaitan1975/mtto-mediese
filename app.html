@@ -221,3 +221,123 @@
   <script>App.initApp();</script>
 </body>
 </html>
+
+    <!-- PROVEEDORES (modificado) -->
+    <section id="view-proveedores" class="hidden">
+      <h2>Proveedores</h2>
+      <div style="text-align:right; margin-bottom:12px;">
+        <button class="btn-primary" id="btn-nuevo-proveedor">+ Nuevo proveedor</button>
+      </div>
+      <input id="prov-buscar" placeholder="Buscar por código o razón social..." style="margin-bottom:12px;" />
+      <div id="lista-proveedores"></div>
+      <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
+    </section>
+
+    <!-- FORMULARIO PROVEEDOR -->
+    <section id="view-proveedor-form" class="hidden">
+      <h2 id="prov-form-titulo">Nuevo proveedor</h2>
+      <input type="hidden" id="prov-form-modo" />
+      <input type="hidden" id="prov-form-codigo-original" />
+
+      <div class="form-grid">
+        <div class="form-grupo">
+          <label>Código *</label>
+          <input id="prov-form-codigo" placeholder="Ej. PROV-004" />
+        </div>
+        <div class="form-grupo">
+          <label>Razón social *</label>
+          <input id="prov-form-razon" placeholder="Ej. Aceros del Norte SA" />
+        </div>
+
+        <div class="form-grupo">
+          <label>RFC</label>
+          <input id="prov-form-rfc" placeholder="Ej. ADN900101ABC" />
+        </div>
+        <div class="form-grupo">
+          <label>Moneda</label>
+          <select id="prov-form-moneda">
+            <option value="MXN">MXN</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+
+        <div class="form-grupo">
+          <label>Contacto</label>
+          <input id="prov-form-contacto" placeholder="Ej. Juan Pérez" />
+        </div>
+        <div class="form-grupo">
+          <label>Teléfono</label>
+          <input id="prov-form-telefono" placeholder="Ej. 7771234567" />
+        </div>
+
+        <div class="form-grupo">
+          <label>Email</label>
+          <input id="prov-form-email" type="email" placeholder="Ej. ventas@aceros.com" />
+        </div>
+        <div class="form-grupo">
+          <label>Tiempo de entrega (días)</label>
+          <input id="prov-form-tiempo" type="number" step="1" value="0" />
+        </div>
+
+        <div class="form-grupo form-grupo-ancho">
+          <label>Notas</label>
+          <textarea id="prov-form-notas" rows="2"></textarea>
+        </div>
+      </div>
+
+      <p id="prov-form-status" class="send-status"></p>
+      <div class="form-acciones">
+        <button class="btn-secundario" onclick="App.volverAProveedores()">Cancelar</button>
+        <button class="btn-primary" id="btn-guardar-proveedor">Guardar</button>
+      </div>
+    </section>
+
+    <!-- UBICACIONES (modificado) -->
+    <section id="view-ubicaciones" class="hidden">
+      <h2>Ubicaciones</h2>
+      <div style="text-align:right; margin-bottom:12px;">
+        <button class="btn-primary" id="btn-nueva-ubicacion">+ Nueva ubicación</button>
+      </div>
+      <input id="ubic-buscar" placeholder="Buscar por código o nombre..." style="margin-bottom:12px;" />
+      <div id="lista-ubicaciones"></div>
+      <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
+    </section>
+
+    <!-- FORMULARIO UBICACIÓN -->
+    <section id="view-ubicacion-form" class="hidden">
+      <h2 id="ubic-form-titulo">Nueva ubicación</h2>
+      <input type="hidden" id="ubic-form-modo" />
+      <input type="hidden" id="ubic-form-codigo-original" />
+
+      <div class="form-grid">
+        <div class="form-grupo">
+          <label>Código *</label>
+          <input id="ubic-form-codigo" placeholder="Ej. ALMACEN_REF" />
+        </div>
+        <div class="form-grupo">
+          <label>Nombre *</label>
+          <input id="ubic-form-nombre" placeholder="Ej. Almacén Refacciones" />
+        </div>
+
+        <div class="form-grupo">
+          <label>Tipo</label>
+          <select id="ubic-form-tipo">
+            <option value="ALMACEN">ALMACEN</option>
+            <option value="TALLER">TALLER</option>
+            <option value="VEHICULO">VEHICULO</option>
+            <option value="OBRA">OBRA</option>
+            <option value="OTRO">OTRO</option>
+          </select>
+        </div>
+        <div class="form-grupo">
+          <label>Responsable</label>
+          <input id="ubic-form-responsable" placeholder="Ej. admin" />
+        </div>
+      </div>
+
+      <p id="ubic-form-status" class="send-status"></p>
+      <div class="form-acciones">
+        <button class="btn-secundario" onclick="App.volverAUbicaciones()">Cancelar</button>
+        <button class="btn-primary" id="btn-guardar-ubicacion">Guardar</button>
+      </div>
+    </section>
