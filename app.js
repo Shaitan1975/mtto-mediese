@@ -158,9 +158,10 @@ const App = (() => {
     addEvent("btn-guardar-proveedor", "click", guardarProveedor);
     addEvent("btn-guardar-ubicacion", "click", guardarUbicacion);
 
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js").catch(() => {});
-    }
+    // Service worker desactivado durante desarrollo
+// if ("serviceWorker" in navigator) {
+//   navigator.serviceWorker.register("sw.js").catch(() => {});
+// }
     mostrarVista("view-menu");
   }
 
