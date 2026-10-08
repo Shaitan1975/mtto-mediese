@@ -155,6 +155,8 @@ const App = (() => {
     addEvent("btn-agregar-linea", "click", agregarLinea);
     addEvent("btn-guardar-mov", "click", guardarMovimiento);
     addEvent("btn-guardar-refaccion", "click", guardarRefaccion);
+    addEvent("btn-guardar-proveedor", "click", guardarProveedor);
+    addEvent("btn-guardar-ubicacion", "click", guardarUbicacion);
 
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("sw.js").catch(() => {});
@@ -1069,6 +1071,10 @@ const App = (() => {
     }
   }
 
+   // ═══════════════════════════════════════════════════════════════
+  // PROVEEDORES
+  // ═══════════════════════════════════════════════════════════════
+
   async function verProveedores() {
     mostrarVista("view-loading");
     document.getElementById("loading-text").textContent = "Cargando proveedores...";
@@ -1076,28 +1082,165 @@ const App = (() => {
       const r = await api("listar_proveedores");
       if (!r.ok) throw new Error(r.error);
       cache.proveedores = r.proveedores;
-      const cont = document.getElementById("lista-proveedores");
-      cont.innerHTML = "";
-      if (!r.proveedores.length) {
-        cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin proveedores.</p>";
-      } else {
-        r.proveedores.forEach(p => {
-          const d = document.createElement("div");
-          d.className = "ref-item";
-          d.innerHTML =
-            "<div class='ref-cod'>" + p.codigo + "</div>" +
-            "<div class='ref-info'>" + p.moneda + "</div>" +
-            "<div class='ref-desc'>" + p.razon_social + "</div>" +
-            "<div class='ref-info'>" + (p.contacto || "") + " · " + (p.telefono || "") + "</div>";
-          cont.appendChild(d);
-        });
-      }
+
+      const inputBuscar = document.getElementById("prov-buscar");
+      inputBuscar.value = "";
+      inputBuscar.oninput = () => filtrarProveedores();
+      document.getElementById("btn-nuevo-proveedor").onclick = () => abrirFormProveedor(null);
+
+      renderProveedores(r.proveedores);
       mostrarVista("view-proveedores");
     } catch (e) {
       alert("Error: " + e.message);
       volverAlMenu();
     }
   }
+
+  function filtrarProveedores() {
+    const q = normalizar(document.getElementById("prov-buscar").value);
+    const filtrados = cache.proveedores.filter(x =>
+      normalizar(x.codigo).includes(q) || normalizar(x.razon_social).includes(q)
+    );
+    renderProveedores(filtrados);
+  }
+
+  function renderProveedores(items) {
+    const cont = document.getElementById("lista-proveedores");
+    cont.innerHTML = "";
+    if (!items.length) {
+      cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin proveedores.</p>";
+      return;
+    }
+    items.forEach(x => {
+      const d = document.createElement("div");
+      d.className = "ref-item";
+      d.innerHTML =
+        "<div class='ref-cod'>" + x.codigo + "</div>" +
+        "<div class='ref-info'>" + x.moneda + "</div>" +
+        "<div class='ref-desc'>" + x.razon_social + "</div>" +
+        "<div class='ref-info'>" + (x.contacto || "-") + " · " + (x.telefono || "-") + " · " + (x.email || "-") + "</div>";
+
+      const acciones = document.createElement("div");
+      acciones.style.cssText = "margin-top:8px; display:flex; gap:6px;";
+
+      const btnEditar = document.createElement("button");
+      btnEditar.className = "btn-secundario";
+      btnEditar.textContent = "✏️ Editar";
+      btnEditar.onclick = () => abrirFormProveedor(x.codigo);
+      acciones.appendChild(btnEditar);
+
+      const btnDesactivar = document.createElement("button");
+      btnDesactivar.className = "btn-secundario";
+      btnDesactivar.textContent = "🚫 Desactivar";
+      btnDesactivar.style.color = "#b91c1c";
+      btnDesactivar.onclick = () => desactivarProveedor(x.codigo);
+      acciones.appendChild(btnDesactivar);
+
+      d.appendChild(acciones);
+      cont.appendChild(d);
+    });
+  }
+
+  function abrirFormProveedor(codigo) {
+    const modo = codigo ? "editar" : "crear";
+    document.getElementById("prov-form-modo").value = modo;
+    document.getElementById("prov-form-codigo-original").value = codigo || "";
+    document.getElementById("prov-form-titulo").textContent =
+      modo === "crear" ? "Nuevo proveedor" : "Editar proveedor";
+
+    if (codigo) {
+      const prov = cache.proveedores.find(p => p.codigo === codigo);
+      if (prov) {
+        document.getElementById("prov-form-codigo").value = prov.codigo;
+        document.getElementById("prov-form-codigo").disabled = true;
+        document.getElementById("prov-form-razon").value = prov.razon_social || "";
+        document.getElementById("prov-form-rfc").value = prov.rfc || "";
+        document.getElementById("prov-form-moneda").value = prov.moneda || "MXN";
+        document.getElementById("prov-form-contacto").value = prov.contacto || "";
+        document.getElementById("prov-form-telefono").value = prov.telefono || "";
+        document.getElementById("prov-form-email").value = prov.email || "";
+        document.getElementById("prov-form-tiempo").value = prov.tiempo_entrega_dias || 0;
+        document.getElementById("prov-form-notas").value = prov.notas || "";
+      }
+    } else {
+      document.getElementById("prov-form-codigo").value = "";
+      document.getElementById("prov-form-codigo").disabled = false;
+      document.getElementById("prov-form-razon").value = "";
+      document.getElementById("prov-form-rfc").value = "";
+      document.getElementById("prov-form-moneda").value = "MXN";
+      document.getElementById("prov-form-contacto").value = "";
+      document.getElementById("prov-form-telefono").value = "";
+      document.getElementById("prov-form-email").value = "";
+      document.getElementById("prov-form-tiempo").value = 0;
+      document.getElementById("prov-form-notas").value = "";
+    }
+
+    document.getElementById("prov-form-status").textContent = "";
+    mostrarVista("view-proveedor-form");
+  }
+
+  async function guardarProveedor() {
+    const modo = document.getElementById("prov-form-modo").value;
+    const codigo = document.getElementById("prov-form-codigo").value.trim();
+    const razon = document.getElementById("prov-form-razon").value.trim();
+    const status = document.getElementById("prov-form-status");
+
+    if (!codigo) { status.textContent = "❌ Código obligatorio"; status.className = "send-status error"; return; }
+    if (!razon) { status.textContent = "❌ Razón social obligatoria"; status.className = "send-status error"; return; }
+
+    const body = {
+      codigo: codigo,
+      razon_social: razon,
+      rfc: document.getElementById("prov-form-rfc").value.trim(),
+      moneda: document.getElementById("prov-form-moneda").value,
+      contacto: document.getElementById("prov-form-contacto").value.trim(),
+      telefono: document.getElementById("prov-form-telefono").value.trim(),
+      email: document.getElementById("prov-form-email").value.trim(),
+      tiempo_entrega_dias: Number(document.getElementById("prov-form-tiempo").value) || 0,
+      notas: document.getElementById("prov-form-notas").value.trim(),
+      usuario: usuarioActual.user,
+      rol: usuarioActual.rol
+    };
+
+    status.textContent = "Guardando...";
+    status.className = "send-status";
+
+    try {
+      const accion = modo === "crear" ? "crear_proveedor" : "editar_proveedor";
+      const r = await api(accion, body, "POST");
+      if (!r.ok) throw new Error(r.error);
+      status.textContent = "✅ " + r.mensaje;
+      status.className = "send-status ok";
+      cache.proveedores = null;
+      setTimeout(verProveedores, 800);
+    } catch (e) {
+      status.textContent = "❌ " + e.message;
+      status.className = "send-status error";
+    }
+  }
+
+  async function desactivarProveedor(codigo) {
+    if (!confirm("¿Desactivar el proveedor " + codigo + "?")) return;
+    try {
+      const r = await api("desactivar_proveedor", {
+        codigo: codigo,
+        usuario: usuarioActual.user,
+        rol: usuarioActual.rol
+      }, "POST");
+      if (!r.ok) throw new Error(r.error);
+      alert("✅ " + r.mensaje);
+      cache.proveedores = null;
+      verProveedores();
+    } catch (e) {
+      alert("Error: " + e.message);
+    }
+  }
+
+  function volverAProveedores() { verProveedores(); }
+
+  // ═══════════════════════════════════════════════════════════════
+  // UBICACIONES
+  // ═══════════════════════════════════════════════════════════════
 
   async function verUbicaciones() {
     mostrarVista("view-loading");
@@ -1106,22 +1249,17 @@ const App = (() => {
       const r = await api("listar_ubicaciones");
       if (!r.ok) throw new Error(r.error);
       cache.ubicaciones = r.ubicaciones;
-      const cont = document.getElementById("lista-ubicaciones");
-      cont.innerHTML = "";
-      if (!r.ubicaciones.length) {
-        cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin ubicaciones.</p>";
-      } else {
-        r.ubicaciones.forEach(u => {
-          const d = document.createElement("div");
-          d.className = "ref-item";
-          d.innerHTML =
-            "<div class='ref-cod'>" + u.codigo + "</div>" +
-            "<div class='ref-info'>" + u.tipo + "</div>" +
-            "<div class='ref-desc'>" + u.nombre + "</div>" +
-            "<div class='ref-info'>Responsable: " + (u.responsable || "-") + "</div>";
-          cont.appendChild(d);
-        });
-      }
+
+      const inputBuscar = document.getElementById("ubic-buscar");
+      inputBuscar.value = "";
+      inputBuscar.oninput = () => filtrarUbicaciones();
+      document.getElementById("btn-nueva-ubicacion").onclick = () => abrirFormUbicacion(null);
+
+      // Solo admin ve el botón de nueva ubicación
+      const btnNueva = document.getElementById("btn-nueva-ubicacion");
+      if (usuarioActual.rol !== "admin") btnNueva.style.display = "none";
+
+      renderUbicaciones(r.ubicaciones);
       mostrarVista("view-ubicaciones");
     } catch (e) {
       alert("Error: " + e.message);
@@ -1129,21 +1267,134 @@ const App = (() => {
     }
   }
 
-  async function reconstruirStock() {
-    if (usuarioActual.rol !== "admin") return;
-    if (!confirm("¿Reconstruir stock desde movimientos?\n\nEsto recalcula STOCK_ACTUAL desde cero. Puede tardar unos segundos.")) return;
-    mostrarVista("view-loading");
-    document.getElementById("loading-text").textContent = "Reconstruyendo stock...";
+  function filtrarUbicaciones() {
+    const q = normalizar(document.getElementById("ubic-buscar").value);
+    const filtrados = cache.ubicaciones.filter(x =>
+      normalizar(x.codigo).includes(q) || normalizar(x.nombre).includes(q)
+    );
+    renderUbicaciones(filtrados);
+  }
+
+  function renderUbicaciones(items) {
+    const cont = document.getElementById("lista-ubicaciones");
+    cont.innerHTML = "";
+    if (!items.length) {
+      cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin ubicaciones.</p>";
+      return;
+    }
+    items.forEach(x => {
+      const d = document.createElement("div");
+      d.className = "ref-item";
+      d.innerHTML =
+        "<div class='ref-cod'>" + x.codigo + "</div>" +
+        "<div class='ref-info'>" + x.tipo + "</div>" +
+        "<div class='ref-desc'>" + x.nombre + "</div>" +
+        "<div class='ref-info'>Responsable: " + (x.responsable || "-") + "</div>";
+
+      if (usuarioActual.rol === "admin") {
+        const acciones = document.createElement("div");
+        acciones.style.cssText = "margin-top:8px; display:flex; gap:6px;";
+
+        const btnEditar = document.createElement("button");
+        btnEditar.className = "btn-secundario";
+        btnEditar.textContent = "✏️ Editar";
+        btnEditar.onclick = () => abrirFormUbicacion(x.codigo);
+        acciones.appendChild(btnEditar);
+
+        const btnDesactivar = document.createElement("button");
+        btnDesactivar.className = "btn-secundario";
+        btnDesactivar.textContent = "🚫 Desactivar";
+        btnDesactivar.style.color = "#b91c1c";
+        btnDesactivar.onclick = () => desactivarUbicacion(x.codigo);
+        acciones.appendChild(btnDesactivar);
+
+        d.appendChild(acciones);
+      }
+      cont.appendChild(d);
+    });
+  }
+
+  function abrirFormUbicacion(codigo) {
+    const modo = codigo ? "editar" : "crear";
+    document.getElementById("ubic-form-modo").value = modo;
+    document.getElementById("ubic-form-codigo-original").value = codigo || "";
+    document.getElementById("ubic-form-titulo").textContent =
+      modo === "crear" ? "Nueva ubicación" : "Editar ubicación";
+
+    if (codigo) {
+      const u = cache.ubicaciones.find(x => x.codigo === codigo);
+      if (u) {
+        document.getElementById("ubic-form-codigo").value = u.codigo;
+        document.getElementById("ubic-form-codigo").disabled = true;
+        document.getElementById("ubic-form-nombre").value = u.nombre || "";
+        document.getElementById("ubic-form-tipo").value = u.tipo || "ALMACEN";
+        document.getElementById("ubic-form-responsable").value = u.responsable || "";
+      }
+    } else {
+      document.getElementById("ubic-form-codigo").value = "";
+      document.getElementById("ubic-form-codigo").disabled = false;
+      document.getElementById("ubic-form-nombre").value = "";
+      document.getElementById("ubic-form-tipo").value = "ALMACEN";
+      document.getElementById("ubic-form-responsable").value = "";
+    }
+
+    document.getElementById("ubic-form-status").textContent = "";
+    mostrarVista("view-ubicacion-form");
+  }
+
+  async function guardarUbicacion() {
+    const modo = document.getElementById("ubic-form-modo").value;
+    const codigo = document.getElementById("ubic-form-codigo").value.trim();
+    const nombre = document.getElementById("ubic-form-nombre").value.trim();
+    const status = document.getElementById("ubic-form-status");
+
+    if (!codigo) { status.textContent = "❌ Código obligatorio"; status.className = "send-status error"; return; }
+    if (!nombre) { status.textContent = "❌ Nombre obligatorio"; status.className = "send-status error"; return; }
+
+    const body = {
+      codigo: codigo,
+      nombre: nombre,
+      tipo: document.getElementById("ubic-form-tipo").value,
+      responsable: document.getElementById("ubic-form-responsable").value.trim(),
+      usuario: usuarioActual.user,
+      rol: usuarioActual.rol
+    };
+
+    status.textContent = "Guardando...";
+    status.className = "send-status";
+
     try {
-      const r = await api("reconstruir_stock", {}, "POST");
+      const accion = modo === "crear" ? "crear_ubicacion" : "editar_ubicacion";
+      const r = await api(accion, body, "POST");
       if (!r.ok) throw new Error(r.error);
-      alert("✅ " + r.total + " items reconstruidos");
-      volverAlMenu();
+      status.textContent = "✅ " + r.mensaje;
+      status.className = "send-status ok";
+      cache.ubicaciones = null;
+      setTimeout(verUbicaciones, 800);
     } catch (e) {
-      alert("Error: " + e.message);
-      volverAlMenu();
+      status.textContent = "❌ " + e.message;
+      status.className = "send-status error";
     }
   }
+
+  async function desactivarUbicacion(codigo) {
+    if (!confirm("¿Desactivar la ubicación " + codigo + "?\n\nNo se puede desactivar si tiene stock.")) return;
+    try {
+      const r = await api("desactivar_ubicacion", {
+        codigo: codigo,
+        usuario: usuarioActual.user,
+        rol: usuarioActual.rol
+      }, "POST");
+      if (!r.ok) throw new Error(r.error);
+      alert("✅ " + r.mensaje);
+      cache.ubicaciones = null;
+      verUbicaciones();
+    } catch (e) {
+      alert("Error: " + e.message);
+    }
+  }
+
+  function volverAUbicaciones() { verUbicaciones(); }
 
   // ═══════════════════════════════════════════════════════════════
   // EXPORT
@@ -1155,7 +1406,11 @@ const App = (() => {
     volverAlMenu,
     agregarLinea,
     volverARefacciones,
-    abrirFormRefaccion
+    abrirFormRefaccion,
+    volverAProveedores,
+    abrirFormProveedor,
+    volverAUbicaciones,
+    abrirFormUbicacion
   };
 
 })();
