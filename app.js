@@ -3129,6 +3129,88 @@ const App = (() => {
     }
     if (p.nota) boton("📝 Agregar nota", () => { const n = prompt("Nota para la bitácora:"); if (n && n.trim()) accionOT("nota_ot", { nota: n.trim() }, ""); }, "btn-secundario");
     if (p.cancelar) boton("✖ Cancelar OT", cancelarOTUI, "btn-secundario");
+    if (usuarioActual.rol !== "produccion") boton("🖨️ Imprimir OT", imprimirOT, "btn-secundario");
+  }
+
+  // Formato de OT para imprimir o guardar como PDF (hoja carta)
+  async function imprimirOT() {
+    const r = otVista.actual, o = r.ot;
+    const w = window.open("", "_blank");
+    if (!w) return alert("Permite las ventanas emergentes de este sitio para imprimir.");
+    let logo = "";
+    try {
+      const c = await api("config");
+      if (c.ok && c.config && c.config.LOGO_URL) logo = String(c.config.LOGO_URL);
+    } catch (e) { /* sin logo */ }
+
+    const fechaHora = iso => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (isNaN(d)) return esc(iso);
+      const p2 = n => String(n).padStart(2, "0");
+      return p2(d.getDate()) + "/" + p2(d.getMonth() + 1) + "/" + d.getFullYear() + " " + p2(d.getHours()) + ":" + p2(d.getMinutes());
+    };
+    const celda = (etq, val, ancho) => "<td" + (ancho ? " colspan='" + ancho + "'" : "") + "><div class='etq'>" + esc(etq) +
+      "</div><div class='val'>" + (val || "&nbsp;") + "</div></td>";
+    const marca = (v, sel) => (v === sel ? "☒" : "☐") + " " + esc(sel);
+    const lineasVacias = n => Array(n).fill("<div class='renglon'>&nbsp;</div>").join("");
+
+    const material = r.materiales.length
+      ? r.materiales.map(m => "<tr><td>" + esc(m.codigo) + "</td><td>" + esc(m.descripcion) + "</td><td class='num'>" +
+          esc(m.cantidad) + " " + esc(m.unidad) + "</td><td>" + esc(m.tipo === "SALIDA" ? "Salida" : "Devolución") + " " + esc(m.id_movimiento) +
+          "</td><td class='num'>" + fmtMoneda(m.importe) + "</td></tr>").join("") +
+        "<tr><td colspan='4' class='num'><b>Total refacciones</b></td><td class='num'><b>" + fmtMoneda(r.costo_refacciones) + "</b></td></tr>"
+      : Array(4).fill("<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>").join("");
+
+    const bitacora = r.bitacora.map(b => "<tr><td>" + esc(b.fecha) + " " + esc(b.hora) + "</td><td>" + esc(b.nombre || b.usuario) +
+      "</td><td><b>" + esc(String(b.evento).replace("_", " ")) + "</b>" + (b.detalle ? " — " + esc(b.detalle) : "") + "</td></tr>").join("");
+
+    w.document.write("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>" +
+      "<title>" + esc(o.id_ot) + "</title><style>" +
+      "@page{size:letter;margin:12mm} *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#000;margin:0}" +
+      ".barra{padding:10px;background:#f1f5f9;font-size:14px} .barra button{font-size:16px;padding:8px 16px;margin-right:8px}" +
+      ".hoja{padding:6mm} .enc{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #1e3a5f;padding-bottom:6px;margin-bottom:8px}" +
+      ".enc h1{font-size:15pt;margin:0;color:#1e3a5f} .enc .sub{font-size:9pt;color:#444} .folio{text-align:right} .folio b{font-size:16pt}" +
+      ".logo{max-height:14mm;max-width:40mm;margin-right:10px} .izq{display:flex;align-items:center}" +
+      "table{width:100%;border-collapse:collapse;margin-bottom:8px} td,th{border:1px solid #888;padding:4px 6px;vertical-align:top}" +
+      "th{background:#e5e7eb;text-align:left;font-size:9pt} .etq{font-size:7.5pt;color:#555;text-transform:uppercase}" +
+      ".val{font-size:10pt;min-height:12pt} .num{text-align:right;white-space:nowrap} h2{font-size:10.5pt;background:#1e3a5f;color:#fff;padding:3px 6px;margin:10px 0 4px}" +
+      ".parado{color:#b91c1c;font-weight:bold} .renglon{border-bottom:1px solid #999;height:7mm}" +
+      ".firmas{display:flex;gap:10mm;margin-top:14mm} .firma{flex:1;text-align:center;border-top:1px solid #000;padding-top:3px;font-size:9pt}" +
+      ".pie{margin-top:6mm;font-size:7.5pt;color:#666;text-align:right} .bit td{font-size:8.5pt}" +
+      "@media print{.barra{display:none} .hoja{padding:0}}" +
+      "</style></head><body>" +
+      "<div class='barra'><button onclick='window.print()'>🖨️ Imprimir / Guardar PDF</button>Papel carta</div>" +
+      "<div class='hoja'>" +
+      "<div class='enc'><div class='izq'>" + (logo ? "<img class='logo' src='" + esc(logo) + "' alt=''/>" : "") +
+        "<div><h1>ORDEN DE TRABAJO DE MANTENIMIENTO</h1><div class='sub'>Mantenimiento Mediese</div></div></div>" +
+        "<div class='folio'><b>" + esc(o.id_ot) + "</b><div class='sub'>Estado: " + esc((ESTADO_OT[o.estado] || {}).txt || o.estado) + "</div></div></div>" +
+
+      "<table><tr>" + celda("Equipo", "<b>" + esc(o.equipo) + "</b> · " + esc(o.nombre_equipo), 2) +
+        celda("Fecha de reporte", esc(o.fecha) + " " + esc(o.hora)) + celda("Reportó", esc(o.nombre_solicitante || o.solicitante)) + "</tr>" +
+      "<tr>" + celda("Tipo", ["CORRECTIVO", "PREVENTIVO", "MEJORA"].map(t => marca(o.tipo, t)).join("&nbsp;&nbsp; ")) +
+        celda("Prioridad", ["ALTA", "MEDIA", "BAJA"].map(t => marca(o.prioridad, t)).join("&nbsp;&nbsp; ")) +
+        celda("¿Equipo parado?", o.equipo_parado === "SI" ? "<span class='parado'>SÍ</span>" + (o.minutos_paro ? " · " + esc(duracion(o.minutos_paro)) : "") : "NO") +
+        celda("Técnico asignado", esc(o.nombre_asignado || "")) + "</tr></table>" +
+
+      "<h2>FALLA REPORTADA</h2><table><tr><td><div class='val'>" + esc(o.descripcion_falla) + "</div></td></tr></table>" +
+
+      "<h2>TRABAJO REALIZADO</h2><table><tr><td>" + (o.trabajo_realizado ? "<div class='val'>" + esc(o.trabajo_realizado) + "</div>" : lineasVacias(4)) + "</td></tr></table>" +
+      "<table><tr>" + celda("Causa", esc(o.causa || "")) + celda("Inicio", fechaHora(o.inicio)) + celda("Fin", fechaHora(o.fin)) +
+        celda("Horas-hombre", o.horas_hombre ? esc(o.horas_hombre) : "") + "</tr></table>" +
+
+      "<h2>REFACCIONES Y MATERIALES</h2><table><tr><th>Código</th><th>Descripción</th><th>Cantidad</th><th>Movimiento</th><th>Importe</th></tr>" + material + "</table>" +
+
+      (bitacora ? "<h2>BITÁCORA</h2><table class='bit'><tr><th style='width:22%'>Fecha</th><th style='width:20%'>Quién</th><th>Evento</th></tr>" + bitacora + "</table>" : "") +
+
+      "<h2>OBSERVACIONES</h2><table><tr><td>" + (o.notas_cierre ? "<div class='val'>" + esc(o.notas_cierre) + "</div>" : lineasVacias(2)) + "</td></tr></table>" +
+
+      "<div class='firmas'><div class='firma'>Técnico<br>" + esc(o.nombre_asignado || "") + "</div>" +
+        "<div class='firma'>Supervisor de mantenimiento</div>" +
+        "<div class='firma'>Producción (recibe el equipo)<br>" + esc(o.nombre_solicitante || "") + "</div></div>" +
+      "<div class='pie'>Impreso " + fechaHora(new Date().toISOString()) + " por " + esc(usuarioActual.nombre || usuarioActual.user) + "</div>" +
+      "</div></body></html>");
+    w.document.close();
   }
 
   async function accionOT(accion, extra, ok) {
