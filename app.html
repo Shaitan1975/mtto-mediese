@@ -24,10 +24,12 @@
         <button id="btn-salida">Salida</button>
         <button id="btn-devolucion">Devolución</button>
         <button id="btn-transferencia">Transferencia</button>
+        <button id="btn-ajuste">Ajuste</button>
         <button id="btn-movimientos">Movimientos</button>
         <button id="btn-refacciones">Refacciones</button>
         <button id="btn-proveedores">Proveedores</button>
         <button id="btn-ubicaciones">Ubicaciones</button>
+        <button id="btn-critico">Bajo mínimo</button>
         <button id="btn-alertas">Alertas stock</button>
         <button id="btn-reconstruir">Reconstruir stock</button>
       </div>
@@ -50,6 +52,16 @@
         <label>Proveedor / Cliente</label>
         <div id="mov-proveedor-container"></div>
       </div>
+      <div id="grupo-salida" class="hidden">
+        <label>Equipo / máquina</label>
+        <select id="mov-equipo"></select>
+        <label id="lbl-recibe">Recibe (nombre) *</label>
+        <input id="mov-recibe" placeholder="Quién recibe el material" />
+      </div>
+      <p id="ayuda-ajuste" class="hidden" style="background:#fef3c7;padding:10px;border-radius:8px;font-size:14px;">
+        Ajuste por conteo físico: cantidad <strong>positiva suma</strong>, <strong>negativa resta</strong>.
+        Escribe el motivo en Notas (obligatorio).
+      </p>
       <div id="grupo-ubicacion-origen">
         <label>Ubicación origen</label>
         <select id="mov-ubicacion-origen"></select>
@@ -97,27 +109,40 @@
 
       <div class="form-grid">
         <div class="form-grupo">
-          <label>Código *</label>
-          <input id="ref-form-codigo" placeholder="Ej. REF-0011" />
+          <label>Familia *</label>
+          <select id="ref-form-familia"></select>
         </div>
         <div class="form-grupo">
+          <label>Subfamilia *</label>
+          <select id="ref-form-subfamilia"></select>
+        </div>
+
+        <div class="form-grupo">
+          <label>Tipo de artículo</label>
+          <select id="ref-form-tipo"></select>
+        </div>
+        <div class="form-grupo">
+          <label>Código</label>
+          <input id="ref-form-codigo" disabled placeholder="Se genera al guardar" />
+        </div>
+
+        <div class="form-grupo form-grupo-ancho">
           <label>Descripción *</label>
-          <input id="ref-form-descripcion" placeholder="Ej. Tornillo 1/4 x 2" />
+          <input id="ref-form-descripcion" placeholder="SUSTANTIVO + TIPO + MEDIDA + ESPECIFICACIÓN (sin marca)" />
+          <small style="color:#6b7280;">Ej. BALERO RIGIDO DE BOLAS 6205-2RS 25X52X15 MM</small><br />
+          <small id="ref-form-ejemplos" style="color:#1e3a5f;"></small>
         </div>
 
         <div class="form-grupo">
           <label>Unidad</label>
-          <select id="ref-form-unidad">
-            <option>PZ</option><option>KG</option><option>LT</option><option>MT</option>
-            <option>JGO</option><option>CAJA</option><option>ROLLO</option><option>PAR</option>
-          </select>
+          <select id="ref-form-unidad"></select>
         </div>
         <div class="form-grupo">
-          <label>Categoría</label>
-          <select id="ref-form-categoria">
-            <option>MECANICO</option><option>ELECTRICO</option><option>HIDRAULICO</option>
-            <option>NEUMATICO</option><option>CONSUMIBLE</option><option>HERRAMIENTA</option>
-            <option>EPP</option><option>OTROS</option>
+          <label>Criticidad</label>
+          <select id="ref-form-criticidad">
+            <option value="A">A — para producción si falta</option>
+            <option value="B">B — importante</option>
+            <option value="C">C — general</option>
           </select>
         </div>
 
@@ -131,14 +156,21 @@
         </div>
 
         <div class="form-grupo">
-          <label>Mínimo</label>
-          <input id="ref-form-minimo" type="number" step="0.01" value="0" />
+          <label>No. de parte del fabricante</label>
+          <input id="ref-form-num-parte" placeholder="Ej. 6205-2RSH/C3" />
         </div>
         <div class="form-grupo">
-          <label>Máximo</label>
-          <input id="ref-form-maximo" type="number" step="0.01" value="0" />
+          <label>Equipo donde se usa</label>
+          <select id="ref-form-equipo"></select>
         </div>
 
+        <div class="form-grupo">
+          <label>¿Grado alimenticio?</label>
+          <select id="ref-form-grado">
+            <option value="NO">NO</option>
+            <option value="SI">SI</option>
+          </select>
+        </div>
         <div class="form-grupo">
           <label>¿Maneja lote?</label>
           <select id="ref-form-maneja-lote">
@@ -146,7 +178,17 @@
             <option value="SI">SI</option>
           </select>
         </div>
+
         <div class="form-grupo">
+          <label>Mínimo</label>
+          <input id="ref-form-minimo" type="number" step="0.01" min="0" value="0" />
+        </div>
+        <div class="form-grupo">
+          <label>Máximo</label>
+          <input id="ref-form-maximo" type="number" step="0.01" min="0" value="0" />
+        </div>
+
+        <div class="form-grupo form-grupo-ancho">
           <label>Ubicación por defecto</label>
           <select id="ref-form-ubicacion"></select>
         </div>
@@ -158,11 +200,15 @@
 
         <div class="form-grupo">
           <label>PU (sin IVA)</label>
-          <input id="ref-form-pu" type="number" step="0.01" value="0" />
+          <input id="ref-form-pu" type="number" step="0.01" min="0" value="0" />
         </div>
         <div class="form-grupo">
-          <label>IVA unitario</label>
-          <input id="ref-form-iva" type="number" step="0.01" value="0" />
+          <label>IVA</label>
+          <select id="ref-form-iva-tasa">
+            <option value="16">16%</option>
+            <option value="8">8% (frontera)</option>
+            <option value="0">0% / exento</option>
+          </select>
         </div>
 
         <div class="form-grupo">
@@ -188,6 +234,21 @@
         <button class="btn-secundario" onclick="App.volverARefacciones()">Cancelar</button>
         <button class="btn-primary" id="btn-guardar-refaccion">Guardar</button>
       </div>
+    </section>
+
+    <!-- KARDEX -->
+    <section id="view-kardex" class="hidden">
+      <h2 id="kardex-titulo">Kardex</h2>
+      <p id="kardex-desc" style="color:#555;margin-top:-8px;"></p>
+      <div id="lista-kardex"></div>
+      <button class="btn-primary" onclick="App.volverARefacciones()" style="background:#6b7280;">Volver</button>
+    </section>
+
+    <!-- BAJO MÍNIMO -->
+    <section id="view-critico" class="hidden">
+      <h2>Bajo mínimo</h2>
+      <div id="lista-critico"></div>
+      <button class="btn-primary" onclick="App.volverAlMenu()">Volver</button>
     </section>
 
     <!-- ALERTAS -->
@@ -323,7 +384,7 @@
     </section>
   </main>
 
-  <script src="app.js?v=20261008"></script>
+  <script src="app.js?v=20261018"></script>
   <script>App.initApp();</script>
 </body>
 </html>

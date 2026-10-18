@@ -18,7 +18,8 @@ const App = (() => {
     proveedores: null,
     ubicaciones: null,
     stock: null,
-    movimientos: null
+    movimientos: null,
+    catalogos: null
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -54,43 +55,67 @@ const App = (() => {
     return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, "0")).join("");
   }
 
+  // Escapa texto antes de meterlo en innerHTML
+  function esc(t) {
+    return String(t === null || t === undefined ? "" : t)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function sesionExpirada() {
+    clearSession();
+    alert("Tu sesión expiró. Vuelve a entrar.");
+    window.location.href = "index.html";
+  }
+
+  // Todas las llamadas llevan el token de sesión; el servidor decide usuario y rol
   async function api(accion, data, metodo) {
     metodo = metodo || "GET";
     const url = CONFIG.APPS_SCRIPT_URL;
+    const ses = getSession();
+    const token = ses && ses.token ? ses.token : "";
     try {
+      let r;
       if (metodo === "GET") {
-        const qs = new URLSearchParams({ accion: accion, ...(data || {}) }).toString();
-        const r = await fetch(url + "?" + qs, { cache: "no-store", redirect: "follow" });
-        return await r.json();
+        const qs = new URLSearchParams({ accion: accion, token: token, ...(data || {}) }).toString();
+        r = await fetch(url + "?" + qs, { cache: "no-store", redirect: "follow" });
       } else {
-        const r = await fetch(url, {
+        r = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify({ accion: accion, data: data }),
+          body: JSON.stringify({ accion: accion, data: data || {}, token: token }),
           redirect: "follow"
         });
-        return await r.json();
       }
+      const json = await r.json();
+      if (json && json.error === "SESION_EXPIRADA" && accion !== "login") {
+        sesionExpirada();
+      }
+      return json;
     } catch (e) {
       console.error("Error API:", e);
       return { ok: false, error: e.message };
     }
   }
 
+  // Login: el servidor da el salt, el navegador calcula el hash y el servidor lo compara.
+  // Los hashes ya no están en GitHub (usuarios.json se elimina del repo).
   async function verificarUsuario(usuario, password) {
+    const user = String(usuario || "").toLowerCase().trim();
+    if (!user || !password) return { error: "Escribe usuario y contraseña" };
     try {
-      const resp = await fetch("usuarios.json?t=" + Date.now(), { cache: "no-store" });
-      const usuarios = await resp.json();
-      const u = usuarios.find(x => x.user === usuario.toLowerCase().trim());
-      if (!u || u.activo === false) return null;
-      const hash = await pbkdf2Hash(password, u.salt);
-      if (hash === u.hash) {
-        return { user: u.user, nombre: u.nombre, rol: u.rol, permisos: u.permisos || [] };
-      }
-      return null;
+      const s = await api("obtener_salt", { usuario: user });
+      if (!s.ok || !s.salt) return { error: "No se pudo conectar con el servidor" };
+      const hash = await pbkdf2Hash(password, s.salt);
+      const r = await api("login", { usuario: user, hash: hash }, "POST");
+      if (!r.ok) return { error: r.error || "Usuario o contraseña incorrectos" };
+      return {
+        user: r.usuario.user, nombre: r.usuario.nombre, rol: r.usuario.rol,
+        token: r.token, expira: Date.now() + (r.expira_seg || 21600) * 1000
+      };
     } catch (e) {
       console.error("Error verificarUsuario:", e);
-      return null;
+      return { error: "No se pudo conectar con el servidor" };
     }
   }
 
@@ -98,8 +123,16 @@ const App = (() => {
   // LOGIN
   // ═══════════════════════════════════════════════════════════════
 
+  function sesionValida() {
+    const s = getSession();
+    if (!s || !s.token) return null;            // sesiones viejas (sin token) no sirven
+    if (s.expira && Date.now() > s.expira) { clearSession(); return null; }
+    return s;
+  }
+
   function initLogin() {
-    if (getSession()) { window.location.href = "app.html"; return; }
+    if (sesionValida()) { window.location.href = "app.html"; return; }
+    clearSession();
     const form = document.getElementById("login-form");
     const err = document.getElementById("error-msg");
     const btn = form.querySelector("button");
@@ -112,9 +145,9 @@ const App = (() => {
         document.getElementById("usuario").value,
         document.getElementById("password").value
       );
-      if (u) { setSession(u); window.location.href = "app.html"; }
+      if (u && !u.error) { setSession(u); window.location.href = "app.html"; }
       else {
-        err.textContent = "Usuario o contraseña incorrectos";
+        err.textContent = (u && u.error) || "Usuario o contraseña incorrectos";
         btn.disabled = false;
         btn.textContent = "Entrar";
       }
@@ -126,8 +159,8 @@ const App = (() => {
   // ═══════════════════════════════════════════════════════════════
 
   function initApp() {
-    usuarioActual = getSession();
-    if (!usuarioActual) { window.location.href = "index.html"; return; }
+    usuarioActual = sesionValida();
+    if (!usuarioActual) { clearSession(); window.location.href = "index.html"; return; }
     const ui = document.getElementById("user-info");
     if (ui) ui.textContent = usuarioActual.nombre + " (" + usuarioActual.rol + ")";
 
@@ -138,14 +171,19 @@ const App = (() => {
       if (el) el.addEventListener(evento, handler);
     };
 
-    addEvent("btn-logout", "click", () => {
-      if (confirm("¿Cerrar sesión?")) { clearSession(); window.location.href = "index.html"; }
+    addEvent("btn-logout", "click", async () => {
+      if (!confirm("¿Cerrar sesión?")) return;
+      try { await api("logout", {}, "POST"); } catch (e) { /* igual se cierra */ }
+      clearSession();
+      window.location.href = "index.html";
     });
     addEvent("btn-stock", "click", verStock);
     addEvent("btn-entrada", "click", () => abrirMovimiento("ENTRADA"));
     addEvent("btn-salida", "click", () => abrirMovimiento("SALIDA"));
     addEvent("btn-devolucion", "click", () => abrirMovimiento("DEVOLUCION"));
     addEvent("btn-transferencia", "click", () => abrirMovimiento("TRANSFERENCIA"));
+    addEvent("btn-ajuste", "click", () => abrirMovimiento("AJUSTE"));
+    addEvent("btn-critico", "click", verStockCritico);
     addEvent("btn-movimientos", "click", verMovimientos);
     addEvent("btn-refacciones", "click", verRefacciones);
     addEvent("btn-alertas", "click", verAlertas);
@@ -169,7 +207,8 @@ const App = (() => {
     const rol = usuarioActual.rol;
     const ocultar = (id) => { const el = document.getElementById(id); if (el) el.style.display = "none"; };
     if (rol === "tecnico") {
-      ocultar("btn-entrada"); ocultar("btn-transferencia"); ocultar("btn-refacciones");
+      ocultar("btn-entrada"); ocultar("btn-transferencia"); ocultar("btn-ajuste");
+      ocultar("btn-refacciones");
       ocultar("btn-proveedores"); ocultar("btn-ubicaciones"); ocultar("btn-reconstruir");
     } else if (rol === "supervisor" || rol === "gerencia") {
       ocultar("btn-reconstruir");
@@ -179,8 +218,8 @@ const App = (() => {
     function mostrarVista(id) {
     [
       "view-menu", "view-stock", "view-movimiento", "view-movimientos",
-      "view-refacciones", "view-refaccion-form",
-      "view-alertas",
+      "view-refacciones", "view-refaccion-form", "view-kardex",
+      "view-alertas", "view-critico",
       "view-proveedores", "view-proveedor-form",
       "view-ubicaciones", "view-ubicacion-form",
       "view-loading"
@@ -198,36 +237,88 @@ const App = (() => {
   // FORMULARIO DE REFACCIÓN
   // ═══════════════════════════════════════════════════════════════
 
+  async function cargarCatalogos() {
+    if (!cache.catalogos) {
+      const r = await api("listar_catalogos");
+      if (!r.ok) throw new Error(r.error || "No se pudieron cargar los catálogos");
+      cache.catalogos = r;
+    }
+    return cache.catalogos;
+  }
+
+  function llenarSelect(sel, items, valor, texto, vacio) {
+    sel.innerHTML = (vacio ? "<option value=''>" + esc(vacio) + "</option>" : "") +
+      items.map(x => "<option value='" + esc(valor(x)) + "'>" + esc(texto(x)) + "</option>").join("");
+  }
+
+  function llenarSubfamilias(familia, seleccion) {
+    const cat = cache.catalogos;
+    const sel = document.getElementById("ref-form-subfamilia");
+    const subs = cat.subfamilias.filter(s => normalizar(s.familia) === normalizar(familia));
+    llenarSelect(sel, subs, s => s.subfamilia, s => s.subfamilia + " — " + s.nombre, "Selecciona...");
+    if (seleccion) sel.value = seleccion;
+    mostrarAyudaSubfamilia();
+  }
+
+  function mostrarAyudaSubfamilia() {
+    const cat = cache.catalogos;
+    const fam = document.getElementById("ref-form-familia").value;
+    const sub = document.getElementById("ref-form-subfamilia").value;
+    const info = cat.subfamilias.find(s => normalizar(s.familia) === normalizar(fam) && normalizar(s.subfamilia) === normalizar(sub));
+    document.getElementById("ref-form-ejemplos").textContent = info && info.ejemplos ? "Ejemplos: " + info.ejemplos : "";
+    return info;
+  }
+
   async function abrirFormRefaccion(codigo) {
-    // Cargar ubicaciones y proveedores si no están
-    if (!cache.ubicaciones) {
-      const r = await api("listar_ubicaciones");
-      cache.ubicaciones = r.ubicaciones || [];
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando formulario...";
+    try {
+      await cargarCatalogos();
+      if (!cache.ubicaciones) {
+        const r = await api("listar_ubicaciones");
+        cache.ubicaciones = r.ubicaciones || [];
+      }
+      if (!cache.proveedores) {
+        const r = await api("listar_proveedores");
+        cache.proveedores = r.proveedores || [];
+      }
+      if (!cache.refacciones) {
+        const r = await api("listar_refacciones");
+        cache.refacciones = r.refacciones || [];
+      }
+    } catch (e) {
+      alert("Error: " + e.message);
+      volverAlMenu();
+      return;
     }
-    if (!cache.proveedores) {
-      const r = await api("listar_proveedores");
-      cache.proveedores = r.proveedores || [];
-    }
-    if (!cache.refacciones) {
-      const r = await api("listar_refacciones");
-      cache.refacciones = r.refacciones || [];
-    }
+    const cat = cache.catalogos;
+    const $ = id => document.getElementById(id);
 
-    // Llenar select de ubicaciones
-    const selUbic = document.getElementById("ref-form-ubicacion");
-    selUbic.innerHTML = cache.ubicaciones.map(u =>
-      "<option value='" + u.codigo + "'>" + u.nombre + "</option>"
-    ).join("");
+    // Selects desde catálogos
+    llenarSelect($("ref-form-familia"), cat.familias, f => f.codigo, f => f.codigo + " — " + f.nombre, "Selecciona...");
+    llenarSelect($("ref-form-tipo"), cat.tipos, t => t.codigo, t => t.nombre);
+    llenarSelect($("ref-form-unidad"), cat.unidades, u => u.codigo, u => u.codigo + " — " + u.nombre);
+    llenarSelect($("ref-form-equipo"), cat.equipos, q => q.codigo, q => q.codigo + " — " + q.nombre, "— Uso general —");
+    llenarSelect($("ref-form-ubicacion"), cache.ubicaciones, u => u.codigo, u => u.nombre);
 
-    // Configurar formulario
+    $("ref-form-familia").onchange = () => {
+      llenarSubfamilias($("ref-form-familia").value);
+      $("ref-form-grado").value = $("ref-form-familia").value === "SAN" ? "SI" : $("ref-form-grado").value;
+    };
+    $("ref-form-subfamilia").onchange = () => {
+      const info = mostrarAyudaSubfamilia();
+      if (info && info.tipo_sugerido) $("ref-form-tipo").value = info.tipo_sugerido;
+    };
+
     const modo = codigo ? "editar" : "crear";
-    document.getElementById("ref-form-modo").value = modo;
-    document.getElementById("ref-form-codigo-original").value = codigo || "";
-    document.getElementById("ref-form-titulo").textContent = modo === "crear" ? "Nueva refacción" : "Editar refacción";
+    $("ref-form-modo").value = modo;
+    $("ref-form-codigo-original").value = codigo || "";
+    $("ref-form-titulo").textContent = modo === "crear" ? "Nueva refacción" : "Editar refacción";
 
     // Buscador de proveedor habitual
-    const contProv = document.getElementById("ref-form-proveedor-container");
+    const contProv = $("ref-form-proveedor-container");
     contProv.innerHTML = "";
+    delete contProv.dataset.codigo;
     const buscadorProv = crearBuscador({
       placeholder: "Buscar proveedor...",
       obtenerDatos: async () => cache.proveedores,
@@ -235,112 +326,134 @@ const App = (() => {
         normalizar(item.codigo).includes(q) ||
         normalizar(item.razon_social).includes(q),
       renderItem: (item) =>
-        "<div class='buscador-cod'>" + item.codigo + "</div>" +
-        "<div class='buscador-desc'>" + item.razon_social + "</div>",
+        "<div class='buscador-cod'>" + esc(item.codigo) + "</div>" +
+        "<div class='buscador-desc'>" + esc(item.razon_social) + "</div>",
       renderSeleccion: (item) => item.razon_social,
       onSelect: (item) => {
         contProv.dataset.codigo = item.codigo;
-        // Si el proveedor cotiza en USD, poner la moneda
-        const selMon = document.getElementById("ref-form-moneda");
-        if (item.moneda) selMon.value = item.moneda;
+        if (item.moneda) $("ref-form-moneda").value = item.moneda;
       }
     });
     contProv.appendChild(buscadorProv);
 
-    // Si es editar, precargar
-    if (codigo) {
-      const ref = cache.refacciones.find(r => r.codigo === codigo);
-      if (ref) {
-        document.getElementById("ref-form-codigo").value = ref.codigo;
-        document.getElementById("ref-form-codigo").disabled = true; // no se puede cambiar
-        document.getElementById("ref-form-descripcion").value = ref.descripcion || "";
-        document.getElementById("ref-form-unidad").value = ref.unidad || "PZ";
-        document.getElementById("ref-form-categoria").value = ref.categoria || "OTROS";
-        document.getElementById("ref-form-marca").value = ref.marca || "";
-        document.getElementById("ref-form-modelo").value = ref.modelo || "";
-        document.getElementById("ref-form-minimo").value = ref.minimo || 0;
-        document.getElementById("ref-form-maximo").value = ref.maximo || 0;
-        document.getElementById("ref-form-maneja-lote").value = ref.maneja_lote || "NO";
-        document.getElementById("ref-form-ubicacion").value = ref.ubicacion_defecto || "";
-        document.getElementById("ref-form-pu").value = ref.pu || 0;
-        document.getElementById("ref-form-iva").value = ref.iva || 0;
-        document.getElementById("ref-form-moneda").value = ref.moneda || "MXN";
-        document.getElementById("ref-form-tipo-cambio").value = ref.tipo_cambio || 0;
-        document.getElementById("ref-form-notas").value = ref.notas || "";
-        // Proveedor
-        if (ref.proveedor_habitual) {
-          const prov = cache.proveedores.find(p => p.codigo === ref.proveedor_habitual);
-          if (prov) {
-            buscadorProv.setValue(prov.razon_social);
-            contProv.dataset.codigo = prov.codigo;
-          }
-        }
+    const ref = codigo ? cache.refacciones.find(r => r.codigo === codigo) : null;
+    if (ref) {
+      // En edición, familia/subfamilia/tipo quedan fijos: el código depende de ellos
+      $("ref-form-codigo").value = ref.codigo;
+      $("ref-form-familia").value = ref.categoria || "";
+      llenarSubfamilias(ref.categoria, ref.subfamilia);
+      $("ref-form-tipo").value = ref.tipo_articulo || "";
+      $("ref-form-familia").disabled = true;
+      $("ref-form-subfamilia").disabled = true;
+      $("ref-form-tipo").disabled = true;
+      $("ref-form-descripcion").value = ref.descripcion || "";
+      $("ref-form-unidad").value = ref.unidad || "PZ";
+      $("ref-form-marca").value = ref.marca || "";
+      $("ref-form-modelo").value = ref.modelo || "";
+      $("ref-form-num-parte").value = ref.num_parte_fabricante || "";
+      $("ref-form-equipo").value = ref.equipo_aplica || "";
+      $("ref-form-criticidad").value = ref.criticidad || "C";
+      $("ref-form-grado").value = ref.grado_alimenticio || "NO";
+      $("ref-form-minimo").value = ref.minimo || 0;
+      $("ref-form-maximo").value = ref.maximo || 0;
+      $("ref-form-maneja-lote").value = ref.maneja_lote || "NO";
+      $("ref-form-ubicacion").value = ref.ubicacion_defecto || "";
+      $("ref-form-pu").value = ref.pu || 0;
+      const tasa = ref.pu > 0 ? Math.round(ref.iva / ref.pu * 100) : 16;
+      $("ref-form-iva-tasa").value = [0, 8, 16].includes(tasa) ? String(tasa) : "16";
+      $("ref-form-moneda").value = ref.moneda || "MXN";
+      $("ref-form-tipo-cambio").value = ref.tipo_cambio || 0;
+      $("ref-form-notas").value = ref.notas || "";
+      if (ref.proveedor_habitual) {
+        const prov = cache.proveedores.find(p => p.codigo === ref.proveedor_habitual);
+        if (prov) { buscadorProv.setValue(prov.razon_social); contProv.dataset.codigo = prov.codigo; }
       }
     } else {
-      // Limpiar
-      document.getElementById("ref-form-codigo").value = "";
-      document.getElementById("ref-form-codigo").disabled = false;
-      document.getElementById("ref-form-descripcion").value = "";
-      document.getElementById("ref-form-marca").value = "";
-      document.getElementById("ref-form-modelo").value = "";
-      document.getElementById("ref-form-minimo").value = 0;
-      document.getElementById("ref-form-maximo").value = 0;
-      document.getElementById("ref-form-pu").value = 0;
-      document.getElementById("ref-form-iva").value = 0;
-      document.getElementById("ref-form-tipo-cambio").value = 0;
-      document.getElementById("ref-form-notas").value = "";
-      delete contProv.dataset.codigo;
+      $("ref-form-codigo").value = "";
+      $("ref-form-familia").disabled = false;
+      $("ref-form-subfamilia").disabled = false;
+      $("ref-form-tipo").disabled = false;
+      $("ref-form-familia").value = "";
+      llenarSubfamilias("");
+      $("ref-form-descripcion").value = "";
+      $("ref-form-unidad").value = "PZ";
+      $("ref-form-marca").value = "";
+      $("ref-form-modelo").value = "";
+      $("ref-form-num-parte").value = "";
+      $("ref-form-equipo").value = "";
+      $("ref-form-criticidad").value = "C";
+      $("ref-form-grado").value = "NO";
+      $("ref-form-minimo").value = 0;
+      $("ref-form-maximo").value = 0;
+      $("ref-form-maneja-lote").value = "NO";
+      $("ref-form-ubicacion").value = "ALMACEN_MTTO";
+      $("ref-form-pu").value = 0;
+      $("ref-form-iva-tasa").value = "16";
+      $("ref-form-moneda").value = "MXN";
+      $("ref-form-tipo-cambio").value = 0;
+      $("ref-form-notas").value = "";
     }
 
-    document.getElementById("ref-form-status").textContent = "";
+    $("ref-form-status").textContent = "";
     mostrarVista("view-refaccion-form");
   }
 
   async function guardarRefaccion() {
-    const modo = document.getElementById("ref-form-modo").value;
-    const codigo = document.getElementById("ref-form-codigo").value.trim();
-    const descripcion = document.getElementById("ref-form-descripcion").value.trim();
-    const status = document.getElementById("ref-form-status");
+    const $ = id => document.getElementById(id);
+    const modo = $("ref-form-modo").value;
+    const status = $("ref-form-status");
+    const error = (m) => { status.textContent = "❌ " + m; status.className = "send-status error"; };
 
-    if (!codigo) { status.textContent = "❌ Código obligatorio"; status.className = "send-status error"; return; }
-    if (!descripcion) { status.textContent = "❌ Descripción obligatoria"; status.className = "send-status error"; return; }
+    const familia = $("ref-form-familia").value;
+    const subfamilia = $("ref-form-subfamilia").value;
+    const descripcion = $("ref-form-descripcion").value.trim();
+    const minimo = Number($("ref-form-minimo").value) || 0;
+    const maximo = Number($("ref-form-maximo").value) || 0;
 
-    const contProv = document.getElementById("ref-form-proveedor-container");
+    if (modo === "crear" && (!familia || !subfamilia)) return error("Selecciona familia y subfamilia");
+    if (descripcion.length < 8) return error("Descripción obligatoria (mínimo 8 caracteres)");
+    if (maximo && maximo < minimo) return error("El máximo no puede ser menor al mínimo");
+
     const body = {
-      codigo: codigo,
       descripcion: descripcion,
-      unidad: document.getElementById("ref-form-unidad").value,
-      categoria: document.getElementById("ref-form-categoria").value,
-      marca: document.getElementById("ref-form-marca").value.trim(),
-      modelo: document.getElementById("ref-form-modelo").value.trim(),
-      minimo: Number(document.getElementById("ref-form-minimo").value) || 0,
-      maximo: Number(document.getElementById("ref-form-maximo").value) || 0,
-      maneja_lote: document.getElementById("ref-form-maneja-lote").value,
-      ubicacion_defecto: document.getElementById("ref-form-ubicacion").value,
-      proveedor_habitual: contProv.dataset.codigo || "",
-      pu: Number(document.getElementById("ref-form-pu").value) || 0,
-      iva: Number(document.getElementById("ref-form-iva").value) || 0,
-      moneda: document.getElementById("ref-form-moneda").value,
-      tipo_cambio: Number(document.getElementById("ref-form-tipo-cambio").value) || 0,
-      notas: document.getElementById("ref-form-notas").value.trim(),
-      usuario: usuarioActual.user,
-      rol: usuarioActual.rol
+      unidad: $("ref-form-unidad").value,
+      marca: $("ref-form-marca").value.trim(),
+      modelo: $("ref-form-modelo").value.trim(),
+      num_parte_fabricante: $("ref-form-num-parte").value.trim(),
+      equipo_aplica: $("ref-form-equipo").value,
+      criticidad: $("ref-form-criticidad").value,
+      grado_alimenticio: $("ref-form-grado").value,
+      minimo: minimo,
+      maximo: maximo,
+      maneja_lote: $("ref-form-maneja-lote").value,
+      ubicacion_defecto: $("ref-form-ubicacion").value,
+      proveedor_habitual: $("ref-form-proveedor-container").dataset.codigo || "",
+      pu: Number($("ref-form-pu").value) || 0,
+      iva_tasa: Number($("ref-form-iva-tasa").value),
+      moneda: $("ref-form-moneda").value,
+      tipo_cambio: Number($("ref-form-tipo-cambio").value) || 0,
+      notas: $("ref-form-notas").value.trim()
     };
+    if (modo === "crear") {
+      body.familia = familia;
+      body.subfamilia = subfamilia;
+      body.tipo_articulo = $("ref-form-tipo").value;
+    } else {
+      body.codigo = $("ref-form-codigo-original").value;
+    }
 
     status.textContent = "Guardando...";
     status.className = "send-status";
-
     try {
       const accion = modo === "crear" ? "crear_refaccion" : "editar_refaccion";
       const r = await api(accion, body, "POST");
       if (!r.ok) throw new Error(r.error);
-      status.textContent = "✅ " + r.mensaje;
+      status.textContent = "✅ " + r.mensaje + (r.codigo ? " · Código " + r.codigo : "");
       status.className = "send-status ok";
-      cache.refacciones = null; // invalidar caché
-      setTimeout(() => { verRefacciones(); }, 800);
+      cache.refacciones = null;
+      setTimeout(() => { verRefacciones(); }, modo === "crear" ? 1800 : 800);
     } catch (e) {
-      status.textContent = "❌ " + e.message;
-      status.className = "send-status error";
+      error(e.message);
     }
   }
 
@@ -552,9 +665,27 @@ const App = (() => {
     const grupoDest = document.getElementById("grupo-ubicacion-destino");
     const grupoOrig = document.getElementById("grupo-ubicacion-origen");
 
+    const grupoSalida = document.getElementById("grupo-salida");
+    const ayudaAjuste = document.getElementById("ayuda-ajuste");
+
     grupoProv.classList.add("hidden");
     grupoDest.classList.add("hidden");
     grupoOrig.classList.add("hidden");
+    grupoSalida.classList.add("hidden");
+    ayudaAjuste.classList.add("hidden");
+    document.getElementById("mov-recibe").value = "";
+
+    if (tipo === "SALIDA" || tipo === "DEVOLUCION") {
+      try {
+        await cargarCatalogos();
+        llenarSelect(document.getElementById("mov-equipo"), cache.catalogos.equipos,
+          q => q.codigo, q => q.codigo + " — " + q.nombre, "— Sin equipo / uso general —");
+      } catch (e) { /* sigue sin equipos */ }
+      document.getElementById("lbl-recibe").textContent =
+        tipo === "SALIDA" ? "Recibe (nombre) *" : "Entrega (nombre)";
+      grupoSalida.classList.remove("hidden");
+    }
+    if (tipo === "AJUSTE") ayudaAjuste.classList.remove("hidden");
 
     if (tipo === "ENTRADA") {
       grupoProv.classList.remove("hidden");
@@ -887,8 +1018,10 @@ const App = (() => {
         document.getElementById("mov-status").className = "send-status error";
         return;
       }
-      if (cantidad <= 0) {
-        document.getElementById("mov-status").textContent = "❌ Cada línea debe tener cantidad > 0";
+      if (tipo === "AJUSTE" ? cantidad === 0 : cantidad <= 0) {
+        document.getElementById("mov-status").textContent = tipo === "AJUSTE"
+          ? "❌ En ajustes la cantidad no puede ser 0 (usa negativo para restar)"
+          : "❌ Cada línea debe tener cantidad > 0";
         document.getElementById("mov-status").className = "send-status error";
         return;
       }
@@ -917,34 +1050,51 @@ const App = (() => {
       ? provCont.dataset.razon
       : (provCont ? provCont.querySelector(".buscador-input").value : "");
 
+    const status = document.getElementById("mov-status");
+    const notas = document.getElementById("mov-notas").value.trim();
+    const recibe = document.getElementById("mov-recibe").value.trim();
+    if (tipo === "SALIDA" && !recibe) {
+      status.textContent = "❌ Indica quién recibe el material";
+      status.className = "send-status error";
+      return;
+    }
+    if (tipo === "AJUSTE" && !notas) {
+      status.textContent = "❌ El ajuste requiere el motivo en Notas";
+      status.className = "send-status error";
+      return;
+    }
+
+    // usuario y rol los pone el servidor a partir de la sesión
     const body = {
       tipo_movimiento: tipo,
       referencia: document.getElementById("mov-referencia").value.trim(),
-      proveedor_cliente: proveedorTexto,
+      proveedor_cliente: tipo === "ENTRADA" ? proveedorTexto : "",
       ubicacion_origen: document.getElementById("mov-ubicacion-origen").value,
       ubicacion_destino: document.getElementById("mov-ubicacion-destino").value,
-      notas: document.getElementById("mov-notas").value.trim(),
+      equipo: (tipo === "SALIDA" || tipo === "DEVOLUCION") ? document.getElementById("mov-equipo").value : "",
+      recibe: (tipo === "SALIDA" || tipo === "DEVOLUCION") ? recibe : "",
+      notas: notas,
       moneda: "MXN",
       tipo_cambio: 0,
-      lineas: lineas,
-      usuario: usuarioActual.user,
-      nombre_usuario: usuarioActual.nombre,
-      rol: usuarioActual.rol
+      lineas: lineas
     };
 
-    const status = document.getElementById("mov-status");
     status.textContent = "Guardando...";
     status.className = "send-status";
 
+    const btnGuardar = document.getElementById("btn-guardar-mov");
+    btnGuardar.disabled = true;   // evita movimientos duplicados por doble clic
     try {
       const r = await api("registrar_movimiento", body, "POST");
       if (!r.ok) throw new Error(r.error || "Error desconocido");
       status.textContent = "✅ " + r.mensaje + " (" + r.id_movimiento + ")";
       status.className = "send-status ok";
-      setTimeout(volverAlMenu, 1800);
+      cache.stock = null;
+      setTimeout(() => { btnGuardar.disabled = false; volverAlMenu(); }, 1800);
     } catch (e) {
       status.textContent = "❌ " + e.message;
       status.className = "send-status error";
+      btnGuardar.disabled = false;
     }
   }
 
@@ -979,11 +1129,13 @@ const App = (() => {
         r.movimientos.forEach(m => {
           const d = document.createElement("div");
           d.className = "mov-item";
+          const extra = [m.referencia, m.equipo, m.recibe ? "Recibe: " + m.recibe : ""].filter(Boolean).join(" · ");
           d.innerHTML =
-            "<div class='mov-id'>" + m.id + "</div>" +
+            "<div class='mov-id'>" + esc(m.id) + "</div>" +
             "<div class='mov-total'>" + fmtMoneda(m.total) + "</div>" +
-            "<div class='mov-tipo'>" + m.tipo + " · " + m.fecha + " " + m.hora + "</div>" +
-            "<div class='mov-user'>" + m.nombre_usuario + " · " + m.estado + "</div>";
+            "<div class='mov-tipo'>" + esc(m.tipo) + " · " + esc(m.fecha) + " " + esc(m.hora) + "</div>" +
+            "<div class='mov-user'>" + esc(m.nombre_usuario) + " · " + esc(m.estado) + "</div>" +
+            (extra ? "<div class='ref-info'>" + esc(extra) + "</div>" : "");
           cont.appendChild(d);
         });
       }
@@ -1038,14 +1190,25 @@ const App = (() => {
     items.forEach(x => {
       const d = document.createElement("div");
       d.className = "ref-item";
+      const clasif = [x.categoria + (x.subfamilia ? "-" + x.subfamilia : ""), x.tipo_articulo,
+                      x.criticidad ? "Crit. " + x.criticidad : "",
+                      x.grado_alimenticio === "SI" ? "Grado alimenticio" : ""].filter(Boolean).join(" · ");
       d.innerHTML =
-        "<div class='ref-cod'>" + x.codigo + "</div>" +
-        "<div class='ref-info'>min " + x.minimo + " / max " + x.maximo + "</div>" +
-        "<div class='ref-desc'>" + x.descripcion + "</div>" +
-        "<div class='ref-info'>" + x.unidad + " · " + x.categoria + " · " + fmtMoneda(x.pu) + " " + x.moneda + "</div>";
+        "<div class='ref-cod'>" + esc(x.codigo) + "</div>" +
+        "<div class='ref-info'>min " + esc(x.minimo) + " / max " + esc(x.maximo) + "</div>" +
+        "<div class='ref-desc'>" + esc(x.descripcion) + "</div>" +
+        "<div class='ref-info'>" + esc(x.unidad) + " · " + esc(clasif) + " · " + fmtMoneda(x.pu) + " " + esc(x.moneda) + "</div>" +
+        ((x.marca || x.num_parte_fabricante)
+          ? "<div class='ref-info'>" + esc([x.marca, x.num_parte_fabricante].filter(Boolean).join(" · ")) + "</div>" : "");
 
       const acciones = document.createElement("div");
-      acciones.style.cssText = "margin-top:8px; display:flex; gap:6px;";
+      acciones.style.cssText = "margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;";
+
+      const btnKardex = document.createElement("button");
+      btnKardex.className = "btn-secundario";
+      btnKardex.textContent = "📜 Kardex";
+      btnKardex.onclick = () => verKardex(x.codigo, x.descripcion);
+      acciones.appendChild(btnKardex);
 
       const btnEditar = document.createElement("button");
       btnEditar.className = "btn-secundario";
@@ -1063,6 +1226,71 @@ const App = (() => {
       d.appendChild(acciones);
       cont.appendChild(d);
     });
+  }
+
+  async function verKardex(codigo, descripcion) {
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando kardex...";
+    try {
+      const r = await api("kardex", { codigo: codigo });
+      if (!r.ok) throw new Error(r.error);
+      document.getElementById("kardex-titulo").textContent = "Kardex " + codigo;
+      document.getElementById("kardex-desc").textContent =
+        (descripcion || "") + " · Existencia: " + r.saldo;
+      const cont = document.getElementById("lista-kardex");
+      cont.innerHTML = "";
+      if (!r.movimientos.length) {
+        cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin movimientos.</p>";
+      }
+      r.movimientos.forEach(m => {
+        const d = document.createElement("div");
+        d.className = "mov-item";
+        const signo = m.efecto > 0 ? "+" : "";
+        const color = m.efecto > 0 ? "#15803d" : (m.efecto < 0 ? "#b91c1c" : "#6b7280");
+        const extra = [m.referencia, m.equipo, m.recibe ? "Recibe: " + m.recibe : ""].filter(Boolean).join(" · ");
+        d.innerHTML =
+          "<div class='mov-id'>" + esc(m.tipo) + " · " + esc(m.fecha) + "</div>" +
+          "<div class='mov-total' style='color:" + color + "'>" +
+            (m.tipo === "TRANSFERENCIA" ? "⇄ " + esc(m.cantidad) : signo + esc(m.efecto)) +
+            " → " + esc(m.saldo) + "</div>" +
+          "<div class='mov-tipo'>" + esc(m.ubicacion) + " · lote " + esc(m.lote) + "</div>" +
+          "<div class='mov-user'>" + esc(m.id) + " · " + esc(m.usuario) + "</div>" +
+          (extra ? "<div class='ref-info'>" + esc(extra) + "</div>" : "");
+        cont.appendChild(d);
+      });
+      mostrarVista("view-kardex");
+    } catch (e) {
+      alert("Error: " + e.message);
+      verRefacciones();
+    }
+  }
+
+  async function verStockCritico() {
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Revisando mínimos...";
+    try {
+      const r = await api("stock_critico");
+      if (!r.ok) throw new Error(r.error);
+      const cont = document.getElementById("lista-critico");
+      cont.innerHTML = "";
+      if (!r.items.length) {
+        cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Todo arriba del mínimo. 👍</p>";
+      }
+      r.items.forEach(x => {
+        const d = document.createElement("div");
+        d.className = "alerta-item";
+        d.innerHTML =
+          "<div class='alerta-cod'>" + esc(x.codigo) + (x.criticidad === "A" ? " ⚠️" : "") + "</div>" +
+          "<div class='alerta-saldo'>" + esc(x.saldo) + " / min " + esc(x.minimo) + " " + esc(x.unidad) + "</div>" +
+          "<div class='alerta-desc'>" + esc(x.descripcion) + "</div>" +
+          "<div class='ref-info'>Sugerido comprar: " + esc(x.sugerido_comprar) + " " + esc(x.unidad) + "</div>";
+        cont.appendChild(d);
+      });
+      mostrarVista("view-critico");
+    } catch (e) {
+      alert("Error: " + e.message);
+      volverAlMenu();
+    }
   }
 
   async function verAlertas() {
