@@ -19,7 +19,9 @@ const App = (() => {
     ubicaciones: null,
     stock: null,
     movimientos: null,
-    catalogos: null
+    catalogos: null,
+    equipos: null,
+    usuarios: null
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -184,6 +186,14 @@ const App = (() => {
     addEvent("btn-transferencia", "click", () => abrirMovimiento("TRANSFERENCIA"));
     addEvent("btn-ajuste", "click", () => abrirMovimiento("AJUSTE"));
     addEvent("btn-critico", "click", verStockCritico);
+    addEvent("btn-equipos", "click", verEquipos);
+    addEvent("btn-usuarios", "click", verUsuarios);
+    addEvent("btn-config", "click", verConfig);
+    addEvent("btn-mi-pass", "click", () => abrirPassword(null));
+    addEvent("btn-guardar-equipo", "click", guardarEquipo);
+    addEvent("btn-guardar-usuario", "click", guardarUsuario);
+    addEvent("btn-guardar-pass", "click", guardarPassword);
+    addEvent("btn-guardar-config", "click", guardarConfigApp);
     addEvent("btn-movimientos", "click", verMovimientos);
     addEvent("btn-refacciones", "click", verRefacciones);
     addEvent("btn-alertas", "click", verAlertas);
@@ -208,10 +218,11 @@ const App = (() => {
     const ocultar = (id) => { const el = document.getElementById(id); if (el) el.style.display = "none"; };
     if (rol === "tecnico") {
       ocultar("btn-entrada"); ocultar("btn-transferencia"); ocultar("btn-ajuste");
-      ocultar("btn-refacciones");
+      ocultar("btn-refacciones"); ocultar("btn-equipos");
+      ocultar("btn-usuarios"); ocultar("btn-config");
       ocultar("btn-proveedores"); ocultar("btn-ubicaciones"); ocultar("btn-reconstruir");
     } else if (rol === "supervisor" || rol === "gerencia") {
-      ocultar("btn-reconstruir");
+      ocultar("btn-reconstruir"); ocultar("btn-usuarios"); ocultar("btn-config");
     }
   }
 
@@ -222,6 +233,8 @@ const App = (() => {
       "view-alertas", "view-critico",
       "view-proveedores", "view-proveedor-form",
       "view-ubicaciones", "view-ubicacion-form",
+      "view-equipos", "view-equipo-form", "view-usuarios", "view-usuario-form",
+      "view-password", "view-config",
       "view-loading"
     ].forEach(v => {
       const el = document.getElementById(v);
@@ -1648,6 +1661,347 @@ const App = (() => {
   function volverAUbicaciones() { verUbicaciones(); }
 
   // ═══════════════════════════════════════════════════════════════
+  // UTILIDADES DE CONTRASEÑA
+  // ═══════════════════════════════════════════════════════════════
+
+  function nuevoSalt() {
+    return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Valida y devuelve { salt, hash } o { error }
+  async function prepararPassword(p1, p2) {
+    if (!p1 || p1.length < 8) return { error: "La contraseña debe tener al menos 8 caracteres" };
+    if (p1 !== p2) return { error: "Las contraseñas no coinciden" };
+    const salt = nuevoSalt();
+    return { salt: salt, hash: await pbkdf2Hash(p1, salt) };
+  }
+
+  function msg(el, texto, tipo) {
+    el.textContent = texto;
+    el.className = "send-status" + (tipo ? " " + tipo : "");
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // EQUIPOS
+  // ═══════════════════════════════════════════════════════════════
+
+  async function verEquipos() {
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando equipos...";
+    try {
+      const r = await api("listar_equipos");
+      if (!r.ok) throw new Error(r.error);
+      cache.equipos = r.equipos;
+      const buscar = document.getElementById("equipo-buscar");
+      buscar.value = "";
+      buscar.oninput = () => {
+        const q = normalizar(buscar.value);
+        renderEquipos(cache.equipos.filter(x =>
+          [x.codigo, x.nombre, x.area, x.linea].some(v => normalizar(v).includes(q))));
+      };
+      document.getElementById("btn-nuevo-equipo").onclick = () => abrirFormEquipo(null);
+      renderEquipos(r.equipos);
+      mostrarVista("view-equipos");
+    } catch (e) {
+      alert("Error: " + e.message);
+      volverAlMenu();
+    }
+  }
+
+  function renderEquipos(items) {
+    const cont = document.getElementById("lista-equipos");
+    cont.innerHTML = "";
+    if (!items.length) {
+      cont.innerHTML = "<p style='text-align:center;padding:20px;color:#888;'>Sin equipos. Da de alta tus máquinas para ligar las salidas.</p>";
+      return;
+    }
+    items.forEach(x => {
+      const d = document.createElement("div");
+      d.className = "ref-item";
+      if (!x.activo) d.style.opacity = "0.55";
+      d.innerHTML =
+        "<div class='ref-cod'>" + esc(x.codigo) + (x.activo ? "" : " · INACTIVO") + "</div>" +
+        "<div class='ref-info'>Crit. " + esc(x.criticidad || "-") + "</div>" +
+        "<div class='ref-desc'>" + esc(x.nombre) + "</div>" +
+        "<div class='ref-info'>" + esc([x.area, x.linea, x.marca, x.modelo].filter(Boolean).join(" · ") || "-") + "</div>";
+      const acc = document.createElement("div");
+      acc.style.cssText = "margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;";
+      const bEd = document.createElement("button");
+      bEd.className = "btn-secundario";
+      bEd.textContent = "✏️ Editar";
+      bEd.onclick = () => abrirFormEquipo(x.codigo);
+      acc.appendChild(bEd);
+      const bAc = document.createElement("button");
+      bAc.className = "btn-secundario";
+      bAc.textContent = x.activo ? "🚫 Desactivar" : "✅ Activar";
+      if (x.activo) bAc.style.color = "#b91c1c";
+      bAc.onclick = () => activarEquipo(x.codigo, !x.activo);
+      acc.appendChild(bAc);
+      d.appendChild(acc);
+      cont.appendChild(d);
+    });
+  }
+
+  function abrirFormEquipo(codigo) {
+    const $ = id => document.getElementById(id);
+    const eq = codigo ? cache.equipos.find(x => x.codigo === codigo) : null;
+    $("equipo-form-modo").value = eq ? "editar" : "crear";
+    $("equipo-form-titulo").textContent = eq ? "Editar equipo" : "Nuevo equipo";
+    $("equipo-form-codigo").value = eq ? eq.codigo : "";
+    $("equipo-form-codigo").disabled = !!eq;
+    $("equipo-form-nombre").value = eq ? eq.nombre : "";
+    $("equipo-form-area").value = eq ? eq.area : "";
+    $("equipo-form-linea").value = eq ? eq.linea : "";
+    $("equipo-form-marca").value = eq ? eq.marca : "";
+    $("equipo-form-modelo").value = eq ? eq.modelo : "";
+    $("equipo-form-serie").value = eq ? eq.num_serie : "";
+    $("equipo-form-criticidad").value = eq && eq.criticidad ? eq.criticidad : "B";
+    msg($("equipo-form-status"), "");
+    mostrarVista("view-equipo-form");
+  }
+
+  async function guardarEquipo() {
+    const $ = id => document.getElementById(id);
+    const st = $("equipo-form-status");
+    const modo = $("equipo-form-modo").value;
+    const body = {
+      codigo: $("equipo-form-codigo").value.trim(),
+      nombre: $("equipo-form-nombre").value.trim(),
+      area: $("equipo-form-area").value.trim(),
+      linea: $("equipo-form-linea").value.trim(),
+      marca: $("equipo-form-marca").value.trim(),
+      modelo: $("equipo-form-modelo").value.trim(),
+      num_serie: $("equipo-form-serie").value.trim(),
+      criticidad: $("equipo-form-criticidad").value
+    };
+    if (!body.codigo) return msg(st, "❌ Código obligatorio", "error");
+    if (!body.nombre) return msg(st, "❌ Nombre obligatorio", "error");
+    msg(st, "Guardando...");
+    const r = await api(modo === "crear" ? "crear_equipo" : "editar_equipo", body, "POST");
+    if (!r.ok) return msg(st, "❌ " + r.error, "error");
+    msg(st, "✅ " + r.mensaje, "ok");
+    cache.catalogos = null;   // para que las listas de salidas y refacciones lo incluyan
+    setTimeout(verEquipos, 800);
+  }
+
+  async function activarEquipo(codigo, activar) {
+    if (!activar && !confirm("¿Desactivar el equipo " + codigo + "?\n\nYa no aparecerá en las listas; su historial se conserva.")) return;
+    const r = await api("activar_equipo", { codigo: codigo, activo: activar }, "POST");
+    if (!r.ok) return alert("Error: " + r.error);
+    cache.catalogos = null;
+    verEquipos();
+  }
+
+  function volverAEquipos() { verEquipos(); }
+
+  // ═══════════════════════════════════════════════════════════════
+  // USUARIOS (admin)
+  // ═══════════════════════════════════════════════════════════════
+
+  const NOMBRE_ROL = { tecnico: "Técnico", supervisor: "Supervisor", gerencia: "Gerencia", admin: "Admin" };
+
+  async function verUsuarios() {
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando usuarios...";
+    try {
+      const r = await api("listar_usuarios");
+      if (!r.ok) throw new Error(r.error);
+      cache.usuarios = r.usuarios;
+      document.getElementById("btn-nuevo-usuario").onclick = () => abrirFormUsuario(null);
+      renderUsuarios(r.usuarios);
+      mostrarVista("view-usuarios");
+    } catch (e) {
+      alert("Error: " + e.message);
+      volverAlMenu();
+    }
+  }
+
+  function renderUsuarios(items) {
+    const cont = document.getElementById("lista-usuarios");
+    cont.innerHTML = "";
+    items.forEach(x => {
+      const yo = x.usuario === usuarioActual.user;
+      const d = document.createElement("div");
+      d.className = "ref-item";
+      if (!x.activo) d.style.opacity = "0.55";
+      d.innerHTML =
+        "<div class='ref-cod'>" + esc(x.usuario) + (yo ? " (tú)" : "") + (x.activo ? "" : " · INACTIVO") + "</div>" +
+        "<div class='ref-info'>" + esc(NOMBRE_ROL[x.rol] || x.rol) + "</div>" +
+        "<div class='ref-desc'>" + esc(x.nombre) + "</div>" +
+        "<div class='ref-info'>Último acceso: " + esc(x.ultimo_acceso || "nunca") + "</div>";
+      const acc = document.createElement("div");
+      acc.style.cssText = "margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;";
+      const boton = (txt, fn, rojo) => {
+        const b = document.createElement("button");
+        b.className = "btn-secundario";
+        b.textContent = txt;
+        if (rojo) b.style.color = "#b91c1c";
+        b.onclick = fn;
+        acc.appendChild(b);
+      };
+      boton("✏️ Editar", () => abrirFormUsuario(x.usuario));
+      boton("🔑 Restablecer contraseña", () => abrirPassword(x.usuario));
+      if (!yo) {
+        boton(x.activo ? "🚫 Desactivar" : "✅ Activar", () => activarUsuario(x.usuario, !x.activo), x.activo);
+      }
+      d.appendChild(acc);
+      cont.appendChild(d);
+    });
+  }
+
+  function abrirFormUsuario(usuario) {
+    const $ = id => document.getElementById(id);
+    const u = usuario ? cache.usuarios.find(x => x.usuario === usuario) : null;
+    $("usuario-form-modo").value = u ? "editar" : "crear";
+    $("usuario-form-titulo").textContent = u ? "Editar usuario" : "Nuevo usuario";
+    $("usuario-form-usuario").value = u ? u.usuario : "";
+    $("usuario-form-usuario").disabled = !!u;
+    $("usuario-form-nombre").value = u ? u.nombre : "";
+    $("usuario-form-rol").value = u ? u.rol : "tecnico";
+    $("usuario-form-rol").disabled = !!u && u.usuario === usuarioActual.user;   // no cambiar tu propio rol
+    $("usuario-form-grupo-pass").style.display = u ? "none" : "";
+    $("usuario-form-pass1").value = "";
+    $("usuario-form-pass2").value = "";
+    msg($("usuario-form-status"), "");
+    mostrarVista("view-usuario-form");
+  }
+
+  async function guardarUsuario() {
+    const $ = id => document.getElementById(id);
+    const st = $("usuario-form-status");
+    const modo = $("usuario-form-modo").value;
+    const usuario = $("usuario-form-usuario").value.trim().toLowerCase();
+    const nombre = $("usuario-form-nombre").value.trim();
+    const rol = $("usuario-form-rol").value;
+    if (!nombre) return msg(st, "❌ Nombre obligatorio", "error");
+
+    const btn = $("btn-guardar-usuario");
+    btn.disabled = true;
+    try {
+      let r;
+      if (modo === "crear") {
+        if (!/^[a-z0-9._-]{3,30}$/.test(usuario)) return msg(st, "❌ Usuario: mínimo 3 caracteres, sin espacios ni acentos", "error");
+        msg(st, "Protegiendo contraseña...");
+        const p = await prepararPassword($("usuario-form-pass1").value, $("usuario-form-pass2").value);
+        if (p.error) return msg(st, "❌ " + p.error, "error");
+        r = await api("crear_usuario", { nuevo_usuario: usuario, nombre: nombre, nuevo_rol: rol, salt: p.salt, hash: p.hash }, "POST");
+      } else {
+        msg(st, "Guardando...");
+        r = await api("editar_usuario", { objetivo: usuario, nombre: nombre, nuevo_rol: rol }, "POST");
+      }
+      if (!r.ok) return msg(st, "❌ " + r.error, "error");
+      msg(st, "✅ " + r.mensaje, "ok");
+      $("usuario-form-pass1").value = "";
+      $("usuario-form-pass2").value = "";
+      setTimeout(verUsuarios, 1200);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function activarUsuario(usuario, activar) {
+    if (!activar && !confirm("¿Desactivar a " + usuario + "?\n\nNo podrá entrar y se cerrará su sesión. Su historial se conserva.")) return;
+    const r = await api("activar_usuario", { objetivo: usuario, activo: activar }, "POST");
+    if (!r.ok) return alert("Error: " + r.error);
+    verUsuarios();
+  }
+
+  function volverAUsuarios() { verUsuarios(); }
+
+  // ═══════════════════════════════════════════════════════════════
+  // CONTRASEÑA: la propia, o restablecer la de otro (admin)
+  // ═══════════════════════════════════════════════════════════════
+
+  function abrirPassword(objetivo) {
+    const $ = id => document.getElementById(id);
+    const propia = !objetivo;
+    $("pass-objetivo").value = objetivo || "";
+    $("pass-titulo").textContent = propia ? "Cambiar mi contraseña" : "Restablecer contraseña de " + objetivo;
+    $("pass-grupo-actual").style.display = propia ? "" : "none";
+    ["pass-actual", "pass-nueva1", "pass-nueva2"].forEach(id => { $(id).value = ""; });
+    msg($("pass-status"), "");
+    $("btn-pass-cancelar").onclick = () => (propia ? volverAlMenu() : verUsuarios());
+    mostrarVista("view-password");
+  }
+
+  async function guardarPassword() {
+    const $ = id => document.getElementById(id);
+    const st = $("pass-status");
+    const objetivo = $("pass-objetivo").value;
+    const btn = $("btn-guardar-pass");
+    btn.disabled = true;
+    try {
+      msg(st, "Protegiendo contraseña...");
+      const p = await prepararPassword($("pass-nueva1").value, $("pass-nueva2").value);
+      if (p.error) return msg(st, "❌ " + p.error, "error");
+
+      let r;
+      if (!objetivo) {
+        const actual = $("pass-actual").value;
+        if (!actual) return msg(st, "❌ Escribe tu contraseña actual", "error");
+        const s = await api("obtener_salt", { usuario: usuarioActual.user });
+        if (!s.ok) return msg(st, "❌ No se pudo conectar", "error");
+        const hashActual = await pbkdf2Hash(actual, s.salt);
+        r = await api("cambiar_mi_password", { hash_actual: hashActual, salt: p.salt, hash: p.hash }, "POST");
+      } else {
+        r = await api("restablecer_password", { objetivo: objetivo, salt: p.salt, hash: p.hash }, "POST");
+      }
+      if (!r.ok) return msg(st, "❌ " + r.error, "error");
+      ["pass-actual", "pass-nueva1", "pass-nueva2"].forEach(id => { $(id).value = ""; });
+
+      // Si cambió la propia, sus sesiones se cerraron: volver a entrar
+      if (!objetivo || objetivo === usuarioActual.user) {
+        alert("✅ " + r.mensaje);
+        clearSession();
+        window.location.href = "index.html";
+        return;
+      }
+      msg(st, "✅ " + r.mensaje, "ok");
+      setTimeout(verUsuarios, 1500);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // CONFIGURACIÓN (admin)
+  // ═══════════════════════════════════════════════════════════════
+
+  async function verConfig() {
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando configuración...";
+    try {
+      const r = await api("leer_config_editable");
+      if (!r.ok) throw new Error(r.error);
+      const v = {};
+      r.parametros.forEach(p => { v[p.parametro] = p.valor; });
+      document.getElementById("cfg-tc").value = v.TIPO_CAMBIO_USD;
+      document.getElementById("cfg-iva").value = v.IVA_PORCENTAJE;
+      document.getElementById("cfg-correo").value = v.CORREO_NOTIFICACION;
+      msg(document.getElementById("cfg-status"), "");
+      mostrarVista("view-config");
+    } catch (e) {
+      alert("Error: " + e.message);
+      volverAlMenu();
+    }
+  }
+
+  async function guardarConfigApp() {
+    const st = document.getElementById("cfg-status");
+    const parametros = {
+      TIPO_CAMBIO_USD: Number(document.getElementById("cfg-tc").value),
+      IVA_PORCENTAJE: Number(document.getElementById("cfg-iva").value),
+      CORREO_NOTIFICACION: document.getElementById("cfg-correo").value.trim()
+    };
+    if (!(parametros.TIPO_CAMBIO_USD > 0)) return msg(st, "❌ Tipo de cambio inválido", "error");
+    msg(st, "Guardando...");
+    const r = await api("guardar_config", { parametros: parametros }, "POST");
+    if (!r.ok) return msg(st, "❌ " + r.error, "error");
+    msg(st, "✅ " + r.mensaje, "ok");
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // EXPORT
   // ═══════════════════════════════════════════════════════════════
 
@@ -1661,7 +2015,9 @@ const App = (() => {
     volverAProveedores,
     abrirFormProveedor,
     volverAUbicaciones,
-    abrirFormUbicacion
+    abrirFormUbicacion,
+    volverAEquipos,
+    volverAUsuarios
   };
 
 })();

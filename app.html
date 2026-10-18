@@ -11,7 +11,10 @@
 <body>
   <header>
     <span id="user-info">Cargando...</span>
-    <button id="btn-logout">Salir</button>
+    <span style="display:flex;gap:8px;">
+      <button id="btn-mi-pass" title="Cambiar mi contraseña">🔑 Contraseña</button>
+      <button id="btn-logout">Salir</button>
+    </span>
   </header>
 
   <main>
@@ -31,6 +34,9 @@
         <button id="btn-ubicaciones">Ubicaciones</button>
         <button id="btn-critico">Bajo mínimo</button>
         <button id="btn-alertas">Alertas stock</button>
+        <button id="btn-equipos">Equipos</button>
+        <button id="btn-usuarios">Usuarios</button>
+        <button id="btn-config">Configuración</button>
         <button id="btn-reconstruir">Reconstruir stock</button>
       </div>
     </section>
@@ -378,13 +384,168 @@
       </div>
     </section>
 
+    <!-- EQUIPOS -->
+    <section id="view-equipos" class="hidden">
+      <h2>Equipos / máquinas</h2>
+      <div style="text-align:right; margin-bottom:12px;">
+        <button class="btn-primary" id="btn-nuevo-equipo">+ Nuevo equipo</button>
+      </div>
+      <input id="equipo-buscar" placeholder="Buscar por código, nombre o área..." style="margin-bottom:12px;" />
+      <div id="lista-equipos"></div>
+      <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
+    </section>
+
+    <!-- FORMULARIO EQUIPO -->
+    <section id="view-equipo-form" class="hidden">
+      <h2 id="equipo-form-titulo">Nuevo equipo</h2>
+      <input type="hidden" id="equipo-form-modo" />
+      <div class="form-grid">
+        <div class="form-grupo">
+          <label>Código *</label>
+          <input id="equipo-form-codigo" placeholder="Ej. FRE-001 (área + número)" />
+        </div>
+        <div class="form-grupo">
+          <label>Nombre *</label>
+          <input id="equipo-form-nombre" placeholder="Ej. FREIDORA CONTINUA 1" />
+        </div>
+        <div class="form-grupo">
+          <label>Área</label>
+          <input id="equipo-form-area" placeholder="Ej. PRODUCCION, SERVICIOS" />
+        </div>
+        <div class="form-grupo">
+          <label>Línea</label>
+          <input id="equipo-form-linea" placeholder="Ej. LINEA 1" />
+        </div>
+        <div class="form-grupo">
+          <label>Marca</label>
+          <input id="equipo-form-marca" />
+        </div>
+        <div class="form-grupo">
+          <label>Modelo</label>
+          <input id="equipo-form-modelo" />
+        </div>
+        <div class="form-grupo">
+          <label>No. de serie</label>
+          <input id="equipo-form-serie" />
+        </div>
+        <div class="form-grupo">
+          <label>Criticidad</label>
+          <select id="equipo-form-criticidad">
+            <option value="A">A — para la producción si falla</option>
+            <option value="B" selected>B — importante</option>
+            <option value="C">C — apoyo</option>
+          </select>
+        </div>
+      </div>
+      <p id="equipo-form-status" class="send-status"></p>
+      <div class="form-acciones">
+        <button class="btn-secundario" onclick="App.volverAEquipos()">Cancelar</button>
+        <button class="btn-primary" id="btn-guardar-equipo">Guardar</button>
+      </div>
+    </section>
+
+    <!-- USUARIOS -->
+    <section id="view-usuarios" class="hidden">
+      <h2>Usuarios</h2>
+      <div style="text-align:right; margin-bottom:12px;">
+        <button class="btn-primary" id="btn-nuevo-usuario">+ Nuevo usuario</button>
+      </div>
+      <div id="lista-usuarios"></div>
+      <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
+    </section>
+
+    <!-- FORMULARIO USUARIO -->
+    <section id="view-usuario-form" class="hidden">
+      <h2 id="usuario-form-titulo">Nuevo usuario</h2>
+      <input type="hidden" id="usuario-form-modo" />
+      <div class="form-grid">
+        <div class="form-grupo">
+          <label>Usuario *</label>
+          <input id="usuario-form-usuario" placeholder="Ej. jperez (sin espacios ni acentos)" autocomplete="off" />
+        </div>
+        <div class="form-grupo">
+          <label>Nombre *</label>
+          <input id="usuario-form-nombre" placeholder="Ej. Juan Pérez" />
+        </div>
+        <div class="form-grupo">
+          <label>Rol *</label>
+          <select id="usuario-form-rol">
+            <option value="tecnico">Técnico — salidas y devoluciones</option>
+            <option value="supervisor">Supervisor — entradas, ajustes, altas</option>
+            <option value="gerencia">Gerencia — igual que supervisor</option>
+            <option value="admin">Admin — todo</option>
+          </select>
+        </div>
+        <div class="form-grupo" id="usuario-form-grupo-pass">
+          <label>Contraseña * (mínimo 8)</label>
+          <input id="usuario-form-pass1" type="password" autocomplete="new-password" />
+          <label>Repite la contraseña *</label>
+          <input id="usuario-form-pass2" type="password" autocomplete="new-password" />
+        </div>
+      </div>
+      <p id="usuario-form-status" class="send-status"></p>
+      <div class="form-acciones">
+        <button class="btn-secundario" onclick="App.volverAUsuarios()">Cancelar</button>
+        <button class="btn-primary" id="btn-guardar-usuario">Guardar</button>
+      </div>
+    </section>
+
+    <!-- CONTRASEÑA (propia o restablecer) -->
+    <section id="view-password" class="hidden">
+      <h2 id="pass-titulo">Cambiar mi contraseña</h2>
+      <input type="hidden" id="pass-objetivo" />
+      <div class="form-grid">
+        <div class="form-grupo form-grupo-ancho" id="pass-grupo-actual">
+          <label>Contraseña actual *</label>
+          <input id="pass-actual" type="password" autocomplete="current-password" />
+        </div>
+        <div class="form-grupo">
+          <label>Contraseña nueva * (mínimo 8)</label>
+          <input id="pass-nueva1" type="password" autocomplete="new-password" />
+        </div>
+        <div class="form-grupo">
+          <label>Repite la nueva *</label>
+          <input id="pass-nueva2" type="password" autocomplete="new-password" />
+        </div>
+      </div>
+      <p id="pass-status" class="send-status"></p>
+      <div class="form-acciones">
+        <button class="btn-secundario" id="btn-pass-cancelar">Cancelar</button>
+        <button class="btn-primary" id="btn-guardar-pass">Guardar</button>
+      </div>
+    </section>
+
+    <!-- CONFIGURACIÓN -->
+    <section id="view-config" class="hidden">
+      <h2>Configuración</h2>
+      <div class="form-grid">
+        <div class="form-grupo">
+          <label>Tipo de cambio USD → MXN</label>
+          <input id="cfg-tc" type="number" step="0.0001" min="0.01" />
+        </div>
+        <div class="form-grupo">
+          <label>IVA por defecto (%)</label>
+          <input id="cfg-iva" type="number" step="1" min="0" max="100" />
+        </div>
+        <div class="form-grupo form-grupo-ancho">
+          <label>Correo para notificaciones</label>
+          <input id="cfg-correo" type="email" />
+        </div>
+      </div>
+      <p id="cfg-status" class="send-status"></p>
+      <div class="form-acciones">
+        <button class="btn-secundario" onclick="App.volverAlMenu()">Volver</button>
+        <button class="btn-primary" id="btn-guardar-config">Guardar</button>
+      </div>
+    </section>
+
     <!-- LOADING -->
     <section id="view-loading" class="hidden">
       <p id="loading-text" style="text-align:center;padding:40px;color:#666;">Cargando...</p>
     </section>
   </main>
 
-  <script src="app.js?v=20261018"></script>
+  <script src="app.js?v=20261018b"></script>
   <script>App.initApp();</script>
 </body>
 </html>
