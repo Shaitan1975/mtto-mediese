@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// SISTEMA DE MANTENIMIENTO MEDIESE - FRONTEND v1.5
+// SISTEMA DE MANTENIMIENTO MEDIESE - FRONTEND v1.6
 // Fase 1: Almacén de mantenimiento
 // Línea rediseñada + buscadores corregidos
 // ═══════════════════════════════════════════════════════════════════
@@ -23,6 +23,7 @@ const App = (() => {
     equipos: null,
     usuarios: null
   };
+  let movCtx = null;   // { ot, equipo } cuando la salida/devolución se abre desde una OT
 
   // ═══════════════════════════════════════════════════════════════
   // UTILIDADES
@@ -216,6 +217,16 @@ const App = (() => {
     addEvent("btn-aplicar-conteos", "click", () => accionConteos("aplicar"));
     addEvent("btn-descartar-conteos", "click", () => accionConteos("descartar"));
     addEvent("btn-etiquetas", "click", verEtiquetas);
+    // Órdenes de trabajo
+    addEvent("btn-reportar", "click", () => abrirNuevaOT());
+    addEvent("btn-ots", "click", () => verOTs(usuarioActual.rol === "tecnico" ? "mias" : "abiertas"));
+    addEvent("btn-ots-nueva", "click", () => abrirNuevaOT());
+    addEvent("btn-otn-scan", "click", escanearEquipoOT);
+    addEvent("btn-otn-guardar", "click", guardarNuevaOT);
+    addEvent("btn-otn-cancelar", "click", () => verOTs());
+    addEvent("otn-parado-si", "click", () => elegirParado("SI"));
+    addEvent("otn-parado-no", "click", () => elegirParado("NO"));
+    addEvent("btn-ot-volver", "click", () => verOTs());
     addEvent("btn-imprimir-etiquetas", "click", imprimirEtiquetas);
     // Contador de altas por revisar en el menú (supervisores)
     if (["supervisor", "gerencia", "admin"].includes(usuarioActual.rol)) {
@@ -243,6 +254,16 @@ const App = (() => {
   function mostrarBotonesPorRol() {
     const rol = usuarioActual.rol;
     const ocultar = (id) => { const el = document.getElementById(id); if (el) el.style.display = "none"; };
+    if (rol === "produccion") {
+      document.querySelectorAll(".menu-grid button").forEach(b => {
+        if (b.id !== "btn-reportar" && b.id !== "btn-ots") b.style.display = "none";
+      });
+      const rep = document.getElementById("btn-reportar");
+      if (rep) rep.classList.add("destacado");
+      const ots = document.getElementById("btn-ots");
+      if (ots) ots.textContent = "📋 Mis reportes";
+      return;
+    }
     if (rol === "tecnico") {
       ocultar("btn-entrada"); ocultar("btn-transferencia"); ocultar("btn-ajuste");
       ocultar("btn-refacciones"); ocultar("btn-equipos");
@@ -264,6 +285,7 @@ const App = (() => {
       "view-equipos", "view-equipo-form", "view-usuarios", "view-usuario-form",
       "view-password", "view-config",
       "view-conteo", "view-pieza-nueva", "view-alta-ok", "view-revisar", "view-conteos", "view-etiquetas",
+      "view-ots", "view-ot-nueva", "view-ot-detalle", "view-equipo-hist",
       "view-loading"
     ].forEach(v => {
       const el = document.getElementById(v);
@@ -715,8 +737,9 @@ const App = (() => {
   // MOVIMIENTOS
   // ═══════════════════════════════════════════════════════════════
 
-  async function abrirMovimiento(tipo) {
-    document.getElementById("mov-titulo").textContent = tipo;
+  async function abrirMovimiento(tipo, ctx) {
+    movCtx = ctx || null;
+    document.getElementById("mov-titulo").textContent = tipo + (movCtx ? " · " + movCtx.ot : "");
     document.getElementById("mov-tipo").value = tipo;
     document.getElementById("mov-lineas").innerHTML = "";
     document.getElementById("mov-status").textContent = "";
@@ -761,6 +784,14 @@ const App = (() => {
     await cargarUbicacionesSelects();
     await cargarProveedoresBuscador();
     await agregarLinea();
+    const ref = document.getElementById("mov-referencia");
+    ref.readOnly = !!movCtx;
+    if (movCtx) {
+      ref.value = movCtx.ot;
+      const selEq = document.getElementById("mov-equipo");
+      if (selEq && movCtx.equipo) selEq.value = movCtx.equipo;
+      document.getElementById("mov-recibe").value = usuarioActual.nombre || usuarioActual.user;
+    }
     mostrarVista("view-movimiento");
   }
 
@@ -1155,6 +1186,7 @@ const App = (() => {
       ubicacion_origen: document.getElementById("mov-ubicacion-origen").value,
       ubicacion_destino: document.getElementById("mov-ubicacion-destino").value,
       equipo: (tipo === "SALIDA" || tipo === "DEVOLUCION") ? document.getElementById("mov-equipo").value : "",
+      ot: movCtx ? movCtx.ot : "",
       recibe: (tipo === "SALIDA" || tipo === "DEVOLUCION") ? recibe : "",
       notas: notas,
       moneda: "MXN",
@@ -1173,7 +1205,9 @@ const App = (() => {
       status.textContent = "✅ " + r.mensaje + " (" + r.id_movimiento + ")";
       status.className = "send-status ok";
       cache.stock = null;
-      setTimeout(() => { btnGuardar.disabled = false; volverAlMenu(); }, 1800);
+      const otVolver = movCtx ? movCtx.ot : null;
+      movCtx = null;
+      setTimeout(() => { btnGuardar.disabled = false; if (otVolver) verDetalleOT(otVolver); else volverAlMenu(); }, 1500);
     } catch (e) {
       status.textContent = "❌ " + e.message;
       status.className = "send-status error";
@@ -1797,6 +1831,16 @@ const App = (() => {
         "<div class='ref-info'>" + esc([x.area, x.linea, x.marca, x.modelo].filter(Boolean).join(" · ") || "-") + "</div>";
       const acc = document.createElement("div");
       acc.style.cssText = "margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;";
+      const bHi = document.createElement("button");
+      bHi.className = "btn-secundario";
+      bHi.textContent = "📈 Historial";
+      bHi.onclick = () => verHistorialEquipo(x.codigo, x.nombre);
+      acc.appendChild(bHi);
+      const bOt = document.createElement("button");
+      bOt.className = "btn-secundario";
+      bOt.textContent = "🚨 Reportar falla";
+      bOt.onclick = () => abrirNuevaOT(x.codigo);
+      if (x.activo) acc.appendChild(bOt);
       const bEd = document.createElement("button");
       bEd.className = "btn-secundario";
       bEd.textContent = "✏️ Editar";
@@ -2310,6 +2354,7 @@ const App = (() => {
   function interpretarQR(txt) {
     const t = String(txt || "").trim().toUpperCase();
     if (t.indexOf("UBI:") === 0) return { tipo: "ubicacion", valor: t.slice(4) };
+    if (t.indexOf("EQ:") === 0) return { tipo: "equipo", valor: t.slice(3) };
     return { tipo: "pieza", valor: t };
   }
 
@@ -2508,6 +2553,7 @@ const App = (() => {
       cerrarPanelConteo();
       return cargarResumenConteo();
     }
+    if (q.tipo === "equipo") return alert("Esa es la etiqueta de una máquina. Escanea la de la ubicación o la de la pieza.");
     let p = piezaPorCodigo(q.valor);
     if (!p) { await refrescarRefacciones(); p = piezaPorCodigo(q.valor); }
     if (!p) return alert("Esa etiqueta no corresponde a una pieza activa: " + q.valor);
@@ -2748,6 +2794,8 @@ const App = (() => {
     document.getElementById("et-buscar").oninput = renderEtiquetas;
     document.getElementById("et-tab-piezas").onclick = () => cambiarModoEtiquetas("piezas");
     document.getElementById("et-tab-ubic").onclick = () => cambiarModoEtiquetas("ubicaciones");
+    document.getElementById("et-tab-eq").onclick = () => cambiarModoEtiquetas("equipos");
+    try { await cargarCatalogos(); } catch (e) { /* sin equipos */ }
     document.querySelectorAll("#et-filtros [data-filtro]").forEach(b => {
       b.onclick = () => {
         etiquetas.filtro = b.dataset.filtro;
@@ -2768,6 +2816,7 @@ const App = (() => {
     etiquetas.seleccion = new Set();
     document.getElementById("et-tab-piezas").classList.toggle("activo", modo === "piezas");
     document.getElementById("et-tab-ubic").classList.toggle("activo", modo === "ubicaciones");
+    document.getElementById("et-tab-eq").classList.toggle("activo", modo === "equipos");
     document.getElementById("et-filtros").querySelector(".chips").style.display = modo === "piezas" ? "" : "none";
     renderEtiquetas();
   }
@@ -2778,14 +2827,22 @@ const App = (() => {
   }
 
   // Lista uniforme: { qr, titulo, sub, extra }
+  function itemsEtiquetasTodos() {
+    if (etiquetas.modo === "ubicaciones") {
+      return cache.ubicaciones.map(u => ({ qr: "UBI:" + normalizar(u.codigo), titulo: u.nombre, sub: "Ubicación " + u.codigo, extra: u.tipo || "" }));
+    }
+    if (etiquetas.modo === "equipos") {
+      return ((cache.catalogos && cache.catalogos.equipos) || []).map(e => ({
+        qr: "EQ:" + normalizar(e.codigo), titulo: e.codigo, sub: e.nombre,
+        extra: "Escanea para reportar una falla" }));
+    }
+    return (cache.refacciones || []).map(r => ({ qr: r.codigo, titulo: r.codigo, sub: r.descripcion, extra: [r.unidad, r.ubicacion_defecto].filter(Boolean).join(" · ") }));
+  }
+
   function itemsEtiquetasVisibles() {
     const q = palabras(document.getElementById("et-buscar").value);
     const pasa = t => q.every(w => sinAcentos(t).includes(w));
-    if (etiquetas.modo === "ubicaciones") {
-      return cache.ubicaciones
-        .map(u => ({ qr: "UBI:" + normalizar(u.codigo), titulo: u.nombre, sub: "Ubicación " + u.codigo, extra: u.tipo || "" }))
-        .filter(it => pasa(it.titulo + " " + it.sub));
-    }
+    if (etiquetas.modo !== "piezas") return itemsEtiquetasTodos().filter(it => pasa(it.titulo + " " + it.sub));
     const hoy = hoyTexto();
     return (cache.refacciones || [])
       .filter(r => etiquetas.filtro === "todas" || (etiquetas.filtro === "hoy" ? r.fecha_alta === hoy : r.revisado === "NO"))
@@ -2818,10 +2875,7 @@ const App = (() => {
   }
 
   async function imprimirEtiquetas() {
-    const todos = etiquetas.modo === "ubicaciones"
-      ? cache.ubicaciones.map(u => ({ qr: "UBI:" + normalizar(u.codigo), titulo: u.nombre, sub: "Ubicación " + u.codigo, extra: u.tipo || "" }))
-      : (cache.refacciones || []).map(r => ({ qr: r.codigo, titulo: r.codigo, sub: r.descripcion, extra: [r.unidad, r.ubicacion_defecto].filter(Boolean).join(" · ") }));
-    const items = todos.filter(it => etiquetas.seleccion.has(it.qr));
+    const items = itemsEtiquetasTodos().filter(it => etiquetas.seleccion.has(it.qr));
     if (!items.length) return alert("Selecciona al menos una etiqueta.");
     const w = window.open("", "_blank");
     if (!w) return alert("Permite las ventanas emergentes de este sitio para imprimir.");
@@ -2849,6 +2903,343 @@ const App = (() => {
       "</style></head><body><div class='barra'><button onclick='window.print()'>🖨️ Imprimir</button>" + items.length +
       " etiquetas · Papel carta, escala 100%</div><div class='hoja'>" + html + "</div></body></html>");
     w.document.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ÓRDENES DE TRABAJO
+  // ═══════════════════════════════════════════════════════════════
+
+  const ESTADO_OT = {
+    SOLICITADA: { txt: "Solicitada", color: "#b45309", bg: "#fef3c7" },
+    ASIGNADA:   { txt: "Asignada",   color: "#1d4ed8", bg: "#dbeafe" },
+    EN_PROCESO: { txt: "En proceso", color: "#7c3aed", bg: "#ede9fe" },
+    TERMINADA:  { txt: "Terminada",  color: "#047857", bg: "#d1fae5" },
+    CERRADA:    { txt: "Cerrada",    color: "#374151", bg: "#e5e7eb" },
+    CANCELADA:  { txt: "Cancelada",  color: "#6b7280", bg: "#f3f4f6" }
+  };
+  const COLOR_PRIORIDAD = { ALTA: "#b91c1c", MEDIA: "#b45309", BAJA: "#475569" };
+
+  const otVista = { filtro: "abiertas", actual: null, asignables: null };
+
+  function esSupervisor() { return ["supervisor", "gerencia", "admin"].includes(usuarioActual.rol); }
+
+  function duracion(min) {
+    min = Math.max(0, Math.round(Number(min) || 0));
+    if (min < 60) return min + " min";
+    const h = Math.floor(min / 60), m = min % 60;
+    if (h < 24) return h + " h" + (m ? " " + m + " min" : "");
+    const d = Math.floor(h / 24);
+    return d + " d " + (h % 24) + " h";
+  }
+
+  function chipEstado(e) {
+    const s = ESTADO_OT[e] || { txt: e, color: "#374151", bg: "#e5e7eb" };
+    return "<span style='background:" + s.bg + ";color:" + s.color + ";border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;'>" + esc(s.txt) + "</span>";
+  }
+
+  function tarjetaOT(o) {
+    const d = document.createElement("div");
+    d.className = "item-toque";
+    d.style.borderLeft = "5px solid " + (COLOR_PRIORIDAD[o.prioridad] || "#cbd5e1");
+    d.innerHTML =
+      "<div style='display:flex;justify-content:space-between;gap:8px;align-items:center;'>" +
+        "<span class='cod'>" + esc(o.id_ot) + "</span>" + chipEstado(o.estado) + "</div>" +
+      (o.paro_abierto ? "<div style='color:#b91c1c;font-weight:800;margin-top:4px;'>⛔ EQUIPO PARADO · " + esc(duracion(o.minutos_paro)) + "</div>" : "") +
+      "<div style='margin-top:4px;'><b>" + esc(o.equipo) + "</b> · " + esc(o.nombre_equipo) + "</div>" +
+      "<div class='sub'>" + esc(o.descripcion_falla) + "</div>" +
+      "<div class='sub'>" + esc(o.prioridad) + " · " + esc(o.tipo) + " · " +
+        (o.nombre_asignado ? "👷 " + esc(o.nombre_asignado) : "Sin asignar") + " · " +
+        (["SOLICITADA", "ASIGNADA", "EN_PROCESO"].includes(o.estado) ? "abierta hace " : "duró ") + esc(duracion(o.minutos_abierta)) + "</div>";
+    d.onclick = () => verDetalleOT(o.id_ot);
+    return d;
+  }
+
+  async function verOTs(filtro) {
+    if (filtro) otVista.filtro = filtro;
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando órdenes de trabajo...";
+    const r = await api("listar_ots", { filtro: otVista.filtro });
+    if (!r.ok) { alert("Error: " + r.error); return volverAlMenu(); }
+    document.querySelectorAll("#ot-tabs [data-f]").forEach(b => {
+      b.classList.toggle("activo", b.dataset.f === otVista.filtro);
+      b.onclick = () => verOTs(b.dataset.f);
+    });
+    const c = r.contadores || {};
+    document.getElementById("ot-contadores").innerHTML = usuarioActual.rol === "produccion" ? "" :
+      (c.PARADOS ? "<b style='color:#b91c1c'>⛔ " + c.PARADOS + " parado(s)</b> · " : "") +
+      "Solicitadas " + (c.SOLICITADA || 0) + " · Asignadas " + (c.ASIGNADA || 0) +
+      " · En proceso " + (c.EN_PROCESO || 0) + " · Por cerrar " + (c.TERMINADA || 0);
+    const cont = document.getElementById("lista-ots");
+    cont.innerHTML = r.ots.length ? "" : "<p style='text-align:center;padding:20px;color:#888;'>No hay órdenes en esta lista.</p>";
+    r.ots.forEach(o => cont.appendChild(tarjetaOT(o)));
+    mostrarVista("view-ots");
+  }
+
+  // ─── Reportar falla / nueva OT ───
+
+  async function abrirNuevaOT(equipoInicial) {
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando equipos...";
+    try { await cargarCatalogos(); } catch (e) { alert("Error: " + e.message); return volverAlMenu(); }
+    const $ = id => document.getElementById(id);
+    if (!cache.catalogos.equipos.length) {
+      alert("Todavía no hay equipos dados de alta. Pide al supervisor que los registre en 🏭 Equipos.");
+      return volverAlMenu();
+    }
+    llenarSelect($("otn-equipo"), cache.catalogos.equipos, q => q.codigo, q => q.codigo + " — " + q.nombre, "Elige la máquina...");
+    $("otn-equipo").value = equipoInicial || "";
+    $("otn-desc").value = "";
+    elegirParado("NO");
+    const sup = esSupervisor();
+    $("otn-sup").style.display = sup ? "" : "none";
+    if (sup) {
+      if (!otVista.asignables) {
+        const a = await api("listar_asignables");
+        otVista.asignables = a.ok ? a.usuarios : [];
+      }
+      llenarSelect($("otn-asignar"), otVista.asignables, u => u.usuario, u => u.nombre + " (" + u.rol + ")", "— Sin asignar todavía —");
+      $("otn-prioridad").value = "";
+      $("otn-tipo").value = "CORRECTIVO";
+    }
+    msg($("otn-status"), "");
+    mostrarVista("view-ot-nueva");
+  }
+
+  function elegirParado(v) {
+    document.getElementById("otn-parado").value = v;
+    document.getElementById("otn-parado-si").classList.toggle("activo", v === "SI");
+    document.getElementById("otn-parado-no").classList.toggle("activo", v === "NO");
+  }
+
+  async function escanearEquipoOT() {
+    const txt = await escanearQR();
+    if (!txt) return;
+    const t = String(txt).trim().toUpperCase();
+    const cod = t.indexOf("EQ:") === 0 ? t.slice(3) : t;
+    const eq = cache.catalogos.equipos.find(e => normalizar(e.codigo) === cod);
+    if (!eq) return alert("Esa etiqueta no es de un equipo registrado: " + cod);
+    document.getElementById("otn-equipo").value = eq.codigo;
+  }
+
+  async function guardarNuevaOT() {
+    const $ = id => document.getElementById(id);
+    const st = $("otn-status");
+    const body = {
+      equipo: $("otn-equipo").value,
+      equipo_parado: $("otn-parado").value,
+      descripcion_falla: $("otn-desc").value.trim()
+    };
+    if (!body.equipo) return msg(st, "❌ Elige la máquina", "error");
+    if (body.descripcion_falla.length < 10) return msg(st, "❌ Describe qué pasa (ruido, fuga, no arranca, desde cuándo...)", "error");
+    if (esSupervisor()) {
+      body.prioridad = $("otn-prioridad").value;
+      body.tipo = $("otn-tipo").value;
+      body.asignar_a = $("otn-asignar").value;
+    }
+    const btn = $("btn-otn-guardar");
+    btn.disabled = true;
+    msg(st, "Enviando...");
+    try {
+      const r = await api("crear_ot", body, "POST");
+      if (!r.ok) return msg(st, "❌ " + r.error, "error");
+      vibrar(100);
+      alert("✅ Reporte enviado: " + r.id_ot + (body.equipo_parado === "SI" ? "\n\nSe avisó que el equipo está parado." : ""));
+      verDetalleOT(r.id_ot);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ─── Detalle y acciones ───
+
+  async function verDetalleOT(id) {
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando " + id + "...";
+    const r = await api("detalle_ot", { id_ot: id });
+    if (!r.ok) { alert("Error: " + r.error); return verOTs(); }
+    otVista.actual = r;
+    renderDetalleOT();
+    mostrarVista("view-ot-detalle");
+    window.scrollTo(0, 0);
+  }
+
+  function filaDato(etq, val) {
+    return val || val === 0 ? "<div style='display:flex;gap:8px;margin:3px 0;'><span class='sub' style='min-width:110px;'>" + esc(etq) +
+      "</span><span>" + val + "</span></div>" : "";
+  }
+
+  function renderDetalleOT() {
+    const r = otVista.actual, o = r.ot, p = r.puede;
+    const cont = document.getElementById("ot-detalle");
+    let html =
+      "<div style='display:flex;justify-content:space-between;align-items:center;gap:8px;'>" +
+        "<h2 style='margin:0;'>" + esc(o.id_ot) + "</h2>" + chipEstado(o.estado) + "</div>" +
+      (o.paro_abierto ? "<div class='aviso' style='background:#fee2e2;color:#991b1b;font-weight:800;'>⛔ EQUIPO PARADO desde hace " + esc(duracion(o.minutos_paro)) + "</div>" : "") +
+      "<div class='tarjeta-conteo' style='border-color:" + (COLOR_PRIORIDAD[o.prioridad] || "#1e3a5f") + "'>" +
+        "<div class='conteo-codigo' style='font-size:18px;'>" + esc(o.equipo) + " · " + esc(o.nombre_equipo) + "</div>" +
+        "<div class='conteo-desc'>" + esc(o.descripcion_falla) + "</div>" +
+        filaDato("Prioridad", "<b style='color:" + (COLOR_PRIORIDAD[o.prioridad] || "") + "'>" + esc(o.prioridad) + "</b> · " + esc(o.tipo)) +
+        filaDato("Reportó", esc(o.nombre_solicitante || o.solicitante) + " · " + esc(o.fecha) + " " + esc(o.hora)) +
+        filaDato("Técnico", o.nombre_asignado ? "👷 " + esc(o.nombre_asignado) : "<i>Sin asignar</i>") +
+        (o.minutos_trabajo ? filaDato("Tiempo trabajo", esc(duracion(o.minutos_trabajo))) : "") +
+        (o.equipo_parado === "SI" && !o.paro_abierto ? filaDato("Tiempo parado", esc(duracion(o.minutos_paro))) : "") +
+        (o.trabajo_realizado ? filaDato("Trabajo", esc(o.trabajo_realizado)) : "") +
+        (o.causa ? filaDato("Causa", esc(o.causa)) : "") +
+        (o.horas_hombre ? filaDato("Horas-hombre", esc(o.horas_hombre)) : "") +
+        (o.motivo_cancelacion ? filaDato("Cancelada", esc(o.motivo_cancelacion)) : "") +
+        (o.notas_cierre ? filaDato("Cierre", esc(o.notas_cierre)) : "") +
+      "</div>";
+
+    // Material
+    html += "<h3>Material " + (r.materiales.length ? "<span class='ayuda'>(" + fmtMoneda(r.costo_refacciones) + ")</span>" : "") + "</h3>";
+    html += r.materiales.length ? r.materiales.map(m =>
+      "<div class='item-toque' style='cursor:default'><div><span class='cod'>" + esc(m.codigo) + "</span> · " +
+      "<b style='color:" + (m.cantidad < 0 ? "#15803d" : "inherit") + "'>" + esc(m.cantidad) + " " + esc(m.unidad) + "</b> · " + fmtMoneda(m.importe) + "</div>" +
+      "<div class='sub'>" + esc(m.descripcion) + "</div><div class='sub'>" + esc(m.tipo) + " " + esc(m.id_movimiento) + "</div></div>").join("")
+      : "<p class='ayuda'>Sin material todavía.</p>";
+
+    // Bitácora
+    html += "<h3>Bitácora</h3>" + r.bitacora.slice().reverse().map(b =>
+      "<div style='border-left:3px solid #cbd5e1;padding:4px 0 8px 10px;margin-left:4px;'>" +
+      "<div class='sub'>" + esc(b.fecha) + " " + esc(b.hora) + " · " + esc(b.nombre || b.usuario) + "</div>" +
+      "<div><b>" + esc(b.evento.replace("_", " ")) + "</b>" + (b.detalle ? " — " + esc(b.detalle) : "") + "</div></div>").join("");
+    cont.innerHTML = html;
+
+    // Acciones según estado y rol
+    const acc = document.getElementById("ot-acciones");
+    acc.innerHTML = "";
+    const boton = (txt, fn, clase) => {
+      const b = document.createElement("button");
+      b.className = (clase || "btn-primary") + " btn-ancho";
+      b.textContent = txt;
+      b.onclick = fn;
+      acc.appendChild(b);
+    };
+    if (p.iniciar) boton(o.estado === "SOLICITADA" ? "✋ Tomar y empezar" : "▶️ Empezar trabajo", () => accionOT("iniciar_ot", {}, "OT iniciada"));
+    if (p.material) {
+      boton("➖ Sacar material para esta OT", () => abrirMovimiento("SALIDA", { ot: o.id_ot, equipo: o.equipo }));
+      if (r.materiales.length) boton("↩️ Devolver material sobrante", () => abrirMovimiento("DEVOLUCION", { ot: o.id_ot, equipo: o.equipo }), "btn-secundario");
+    }
+    if (p.equipo_opera) boton("✅ El equipo ya funciona", () => { if (confirm("¿El equipo ya está operando?")) accionOT("equipo_opera_ot", {}, ""); }, "btn-secundario");
+    if (p.terminar) boton("🏁 Terminar OT", formTerminarOT);
+    if (p.asignar && ["SOLICITADA", "ASIGNADA", "EN_PROCESO"].includes(o.estado)) boton(o.nombre_asignado ? "👷 Reasignar / prioridad" : "👷 Asignar técnico", formAsignarOT, "btn-secundario");
+    if (p.cerrar) {
+      boton("🔒 Revisada: cerrar OT", () => { const n = prompt("Notas de cierre (opcional):", ""); if (n !== null) accionOT("cerrar_ot", { notas: n }, "OT cerrada"); });
+      boton("↩️ Reabrir (falta algo)", () => { const m = prompt("¿Qué falta? (obligatorio)"); if (m) accionOT("reabrir_ot", { motivo: m }, "OT reabierta"); }, "btn-secundario");
+    }
+    if (p.nota) boton("📝 Agregar nota", () => { const n = prompt("Nota para la bitácora:"); if (n && n.trim()) accionOT("nota_ot", { nota: n.trim() }, ""); }, "btn-secundario");
+    if (p.cancelar) boton("✖ Cancelar OT", cancelarOTUI, "btn-secundario");
+  }
+
+  async function accionOT(accion, extra, ok) {
+    const id = otVista.actual.ot.id_ot;
+    const r = await api(accion, Object.assign({ id_ot: id }, extra || {}), "POST");
+    if (!r.ok) return alert("Error: " + r.error);
+    vibrar(60);
+    if (ok) msg(document.getElementById("ot-status"), "✅ " + (r.mensaje || ok), "ok");
+    verDetalleOT(id);
+  }
+
+  async function cancelarOTUI() {
+    const m = prompt("¿Por qué se cancela? (obligatorio)");
+    if (!m || !m.trim()) return;
+    const id = otVista.actual.ot.id_ot;
+    let r = await api("cancelar_ot", { id_ot: id, motivo: m.trim() }, "POST");
+    if (!r.ok && r.requiere_confirmar) {
+      if (!confirm(r.error + "\n\n¿Cancelar de todos modos?")) return;
+      r = await api("cancelar_ot", { id_ot: id, motivo: m.trim(), confirmar_material: true }, "POST");
+    }
+    if (!r.ok) return alert("Error: " + r.error);
+    verDetalleOT(id);
+  }
+
+  function formEnAcciones(html, alGuardar) {
+    const acc = document.getElementById("ot-acciones");
+    acc.innerHTML = "<div class='tarjeta-conteo'>" + html +
+      "<p id='otf-status' class='send-status'></p><div class='form-acciones'>" +
+      "<button class='btn-secundario' id='otf-cancelar'>Cancelar</button>" +
+      "<button class='btn-primary' id='otf-guardar'>Guardar</button></div></div>";
+    document.getElementById("otf-cancelar").onclick = renderDetalleOT;
+    document.getElementById("otf-guardar").onclick = async () => {
+      const b = document.getElementById("otf-guardar");
+      b.disabled = true;
+      try { await alGuardar(document.getElementById("otf-status")); } finally { b.disabled = false; }
+    };
+    acc.scrollIntoView({ behavior: "smooth" });
+  }
+
+  async function formAsignarOT() {
+    const o = otVista.actual.ot;
+    if (!otVista.asignables) {
+      const a = await api("listar_asignables");
+      otVista.asignables = a.ok ? a.usuarios : [];
+    }
+    formEnAcciones(
+      "<label>Técnico</label><select id='otf-asig'>" + otVista.asignables.map(u =>
+        "<option value='" + esc(u.usuario) + "'" + (u.usuario === o.asignado_a ? " selected" : "") + ">" + esc(u.nombre) + " (" + esc(u.rol) + ")</option>").join("") + "</select>" +
+      "<label>Prioridad</label><select id='otf-prio'>" + ["ALTA", "MEDIA", "BAJA"].map(x =>
+        "<option" + (x === o.prioridad ? " selected" : "") + ">" + x + "</option>").join("") + "</select>" +
+      "<label>Tipo</label><select id='otf-tipo'>" + ["CORRECTIVO", "PREVENTIVO", "MEJORA"].map(x =>
+        "<option" + (x === o.tipo ? " selected" : "") + ">" + x + "</option>").join("") + "</select>",
+      async (st) => {
+        const r = await api("asignar_ot", { id_ot: o.id_ot, asignar_a: document.getElementById("otf-asig").value,
+          prioridad: document.getElementById("otf-prio").value, tipo: document.getElementById("otf-tipo").value }, "POST");
+        if (!r.ok) return msg(st, "❌ " + r.error, "error");
+        verDetalleOT(o.id_ot);
+      });
+  }
+
+  function formTerminarOT() {
+    const r = otVista.actual, o = r.ot;
+    const horasSug = o.minutos_trabajo ? Math.max(0.5, Math.round(o.minutos_trabajo / 30) / 2) : "";
+    formEnAcciones(
+      "<label>¿Qué se hizo? *</label><textarea id='otf-trabajo' rows='3' placeholder='Ej. Se cambió el balero 6205 del motor y se tensó la cadena'></textarea>" +
+      "<label>Causa de la falla</label><select id='otf-causa'>" + r.causas.map(c => "<option>" + esc(c) + "</option>").join("") + "</select>" +
+      "<label>Horas-hombre *</label><input id='otf-horas' type='number' inputmode='decimal' min='0.25' step='0.25' value='" + horasSug + "' />" +
+      "<p class='ayuda'>Suma de horas de todas las personas que trabajaron.</p>" +
+      (o.paro_abierto ? "<label>¿El equipo ya funciona?</label><select id='otf-opera'><option value='SI'>SI, ya opera</option><option value='NO'>NO, sigue parado</option></select>" : ""),
+      async (st) => {
+        const body = {
+          id_ot: o.id_ot,
+          trabajo_realizado: document.getElementById("otf-trabajo").value.trim(),
+          causa: document.getElementById("otf-causa").value,
+          horas_hombre: Number(document.getElementById("otf-horas").value)
+        };
+        if (o.paro_abierto) body.equipo_opera = document.getElementById("otf-opera").value;
+        if (body.trabajo_realizado.length < 10) return msg(st, "❌ Describe el trabajo realizado", "error");
+        if (!(body.horas_hombre > 0)) return msg(st, "❌ Escribe las horas-hombre", "error");
+        const res = await api("terminar_ot", body, "POST");
+        if (!res.ok) return msg(st, "❌ " + res.error, "error");
+        vibrar(120);
+        verDetalleOT(o.id_ot);
+      });
+  }
+
+  // ─── Historial del equipo ───
+
+  async function verHistorialEquipo(codigo, nombre) {
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando historial...";
+    const r = await api("historial_equipo", { codigo: codigo });
+    if (!r.ok) { alert("Error: " + r.error); return verEquipos(); }
+    const i = r.indicadores;
+    const causas = Object.keys(i.causas).sort((a, b) => i.causas[b] - i.causas[a]);
+    const tile = (n, t) => "<div style='background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px;text-align:center;'>" +
+      "<div style='font-size:22px;font-weight:800;color:#1e3a5f;'>" + n + "</div><div class='sub'>" + t + "</div></div>";
+    document.getElementById("eq-hist").innerHTML =
+      "<h2>" + esc(codigo) + "</h2><p class='ayuda' style='margin-top:-8px;'>" + esc(nombre || "") + "</p>" +
+      "<div style='display:grid;grid-template-columns:repeat(2,1fr);gap:8px;'>" +
+        tile(i.ots, "órdenes de trabajo") + tile(i.horas_paro + " h", "tiempo parado") +
+        tile(fmtMoneda(i.costo_refacciones), "en refacciones") + tile(i.horas_hombre + " h", "horas-hombre") +
+        tile(i.mtbf_dias ? i.mtbf_dias + " d" : "—", "entre fallas (MTBF)") + tile(i.mttr_horas ? i.mttr_horas + " h" : "—", "para reparar (MTTR)") +
+      "</div>" +
+      (causas.length ? "<h3>Causas más frecuentes</h3>" + causas.map(c => "<div class='sub'>" + esc(c) + ": <b>" + i.causas[c] + "</b></div>").join("") : "") +
+      "<h3>Órdenes de trabajo</h3>";
+    const cont = document.createElement("div");
+    if (!r.ots.length) cont.innerHTML = "<p class='ayuda'>Sin órdenes de trabajo todavía.</p>";
+    r.ots.forEach(o => cont.appendChild(tarjetaOT(o)));
+    document.getElementById("eq-hist").appendChild(cont);
+    mostrarVista("view-equipo-hist");
   }
 
   // ═══════════════════════════════════════════════════════════════

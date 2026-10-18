@@ -60,6 +60,8 @@
       <h2>Menú</h2>
       <div class="menu-grid">
         <button id="btn-conteo" class="destacado">📦 Contar inventario</button>
+        <button id="btn-reportar">🚨 Reportar falla</button>
+        <button id="btn-ots">🛠️ Órdenes de trabajo</button>
         <button id="btn-salida">➖ Salida</button>
         <button id="btn-devolucion">↩️ Devolución</button>
         <button id="btn-stock">🔍 Ver stock</button>
@@ -721,6 +723,7 @@
       <div class="chips">
         <button class="chip activo" id="et-tab-piezas">Piezas</button>
         <button class="chip" id="et-tab-ubic">Ubicaciones</button>
+        <button class="chip" id="et-tab-eq">Equipos</button>
       </div>
       <div id="et-filtros">
         <div class="chips">
@@ -738,6 +741,79 @@
       <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
     </section>
 
+    <!-- ÓRDENES DE TRABAJO -->
+    <section id="view-ots" class="hidden">
+      <h2>Órdenes de trabajo</h2>
+      <div class="chips" id="ot-tabs">
+        <button class="chip activo" data-f="abiertas">Abiertas</button>
+        <button class="chip" data-f="mias">Mías</button>
+        <button class="chip" data-f="cerradas">Cerradas</button>
+      </div>
+      <p id="ot-contadores" class="ayuda"></p>
+      <button class="btn-primary btn-ancho" id="btn-ots-nueva">🚨 Reportar falla</button>
+      <div id="lista-ots"></div>
+      <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
+    </section>
+
+    <section id="view-ot-nueva" class="hidden">
+      <h2>Reportar falla</h2>
+      <label>Máquina / equipo *</label>
+      <div class="fila-scan">
+        <select id="otn-equipo"></select>
+        <button class="btn-scan" id="btn-otn-scan" title="Escanear etiqueta de la máquina">📷</button>
+      </div>
+      <label>¿La máquina está parada?</label>
+      <input type="hidden" id="otn-parado" value="NO" />
+      <div class="chips">
+        <button type="button" class="chip" id="otn-parado-si" style="font-size:16px;padding:12px 20px;">⛔ Sí, está parada</button>
+        <button type="button" class="chip activo" id="otn-parado-no" style="font-size:16px;padding:12px 20px;">⚙️ No, sigue trabajando</button>
+      </div>
+      <label>¿Qué pasa? *</label>
+      <textarea id="otn-desc" rows="4" placeholder="Ej. Ruido fuerte en el motor de la banda desde el turno de la mañana; huele a quemado"></textarea>
+      <div id="otn-sup">
+        <div class="form-grid">
+          <div class="form-grupo">
+            <label>Prioridad</label>
+            <select id="otn-prioridad">
+              <option value="">Automática (ALTA si está parada)</option>
+              <option value="ALTA">ALTA</option>
+              <option value="MEDIA">MEDIA</option>
+              <option value="BAJA">BAJA</option>
+            </select>
+          </div>
+          <div class="form-grupo">
+            <label>Tipo</label>
+            <select id="otn-tipo">
+              <option value="CORRECTIVO">CORRECTIVO</option>
+              <option value="PREVENTIVO">PREVENTIVO</option>
+              <option value="MEJORA">MEJORA</option>
+            </select>
+          </div>
+          <div class="form-grupo form-grupo-ancho">
+            <label>Asignar a</label>
+            <select id="otn-asignar"></select>
+          </div>
+        </div>
+      </div>
+      <p id="otn-status" class="send-status"></p>
+      <div class="form-acciones">
+        <button class="btn-secundario" id="btn-otn-cancelar">Cancelar</button>
+        <button class="btn-primary" id="btn-otn-guardar">Enviar reporte</button>
+      </div>
+    </section>
+
+    <section id="view-ot-detalle" class="hidden">
+      <div id="ot-detalle"></div>
+      <p id="ot-status" class="send-status"></p>
+      <div id="ot-acciones" style="margin-top:12px;"></div>
+      <button class="btn-primary" id="btn-ot-volver" style="background:#6b7280;">Volver a la lista</button>
+    </section>
+
+    <section id="view-equipo-hist" class="hidden">
+      <div id="eq-hist"></div>
+      <button class="btn-primary" onclick="App.volverAEquipos()" style="background:#6b7280;margin-top:12px;">Volver</button>
+    </section>
+
     <!-- LOADING -->
     <section id="view-loading" class="hidden">
       <p id="loading-text" style="text-align:center;padding:40px;color:#666;">Cargando...</p>
@@ -752,7 +828,7 @@
     <button id="scanner-cerrar">Cerrar</button>
   </div>
 
-  <script src="app.js?v=20261018c"></script>
+  <script src="app.js?v=20261018d"></script>
   <script>App.initApp();</script>
 </body>
 </html>
