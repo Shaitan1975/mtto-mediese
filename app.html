@@ -7,6 +7,43 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#1e3a5f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <style>
+    /* ── Componentes para uso en celular (v1.3) ── */
+    .menu-grid button.destacado { background:#1e3a5f; color:#fff; font-size:17px; grid-column:1 / -1; min-height:64px; }
+    .fila-scan { display:flex; gap:8px; align-items:stretch; }
+    .fila-scan > :first-child { flex:1; min-width:0; }
+    .btn-scan { flex:none; width:54px; min-height:44px; font-size:22px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; cursor:pointer; }
+    .btn-ancho { width:100%; margin:10px 0; min-height:48px; font-size:16px; }
+    .tarjeta-conteo { border:2px solid #1e3a5f; border-radius:12px; padding:14px; margin:12px 0; background:#fff; }
+    .conteo-codigo { font-size:22px; font-weight:800; color:#1e3a5f; }
+    .conteo-desc { font-size:15px; margin:4px 0 8px; }
+    .conteo-info { font-size:14px; color:#475569; margin:2px 0; }
+    .contador { display:flex; gap:8px; align-items:center; margin:8px 0; }
+    .contador button { width:60px; height:60px; font-size:30px; border-radius:12px; border:1px solid #cbd5e1; background:#f1f5f9; flex:none; }
+    .contador input { flex:1; min-width:0; height:60px; font-size:28px; text-align:center; font-weight:700; }
+    .aviso { background:#fef3c7; border-radius:8px; padding:10px; margin:8px 0; font-size:14px; }
+    .aviso label { display:flex; gap:8px; align-items:center; margin:6px 0; font-weight:600; }
+    .aviso input[type=radio] { width:22px; height:22px; }
+    .ayuda { font-size:13px; color:#64748b; margin:4px 0; }
+    .chips { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }
+    .chip { border:1px solid #1e3a5f; color:#1e3a5f; background:#fff; border-radius:999px; padding:8px 12px; font-size:14px; cursor:pointer; text-align:left; }
+    .chip.activo { background:#1e3a5f; color:#fff; }
+    .item-toque { padding:12px; border:1px solid #e2e8f0; border-radius:10px; margin:6px 0; background:#fff; cursor:pointer; }
+    .item-toque .cod { font-weight:700; color:#1e3a5f; }
+    .item-toque .sub { font-size:13px; color:#64748b; }
+    .dif-pos { color:#15803d; font-weight:700; } .dif-neg { color:#b91c1c; font-weight:700; } .dif-cero { color:#64748b; }
+    .codigo-grande { font-size:38px; font-weight:800; text-align:center; color:#1e3a5f; letter-spacing:1px; margin:16px 0; word-break:break-all; }
+    .check-fila { display:flex; gap:10px; align-items:flex-start; }
+    .check-fila input[type=checkbox] { width:24px; height:24px; flex:none; margin-top:2px; }
+    .barra-acciones { position:sticky; bottom:0; background:#f8fafc; padding:10px 0; display:flex; gap:8px; flex-wrap:wrap; }
+    .scanner { position:fixed; inset:0; background:#000; z-index:1000; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    .scanner.hidden { display:none; }
+    .scanner video { width:100%; max-height:75vh; object-fit:cover; }
+    .scanner-marco { position:absolute; top:42%; left:50%; width:62vw; height:62vw; max-width:280px; max-height:280px; transform:translate(-50%,-50%); border:3px solid #22c55e; border-radius:16px; pointer-events:none; }
+    .scanner p { color:#fff; margin:12px; text-align:center; }
+    .scanner button { padding:14px 32px; font-size:16px; border-radius:8px; border:0; }
+  </style>
 </head>
 <body>
   <header>
@@ -22,28 +59,36 @@
     <section id="view-menu">
       <h2>Menú</h2>
       <div class="menu-grid">
-        <button id="btn-stock">Ver stock</button>
-        <button id="btn-entrada">Entrada</button>
-        <button id="btn-salida">Salida</button>
-        <button id="btn-devolucion">Devolución</button>
-        <button id="btn-transferencia">Transferencia</button>
-        <button id="btn-ajuste">Ajuste</button>
-        <button id="btn-movimientos">Movimientos</button>
-        <button id="btn-refacciones">Refacciones</button>
-        <button id="btn-proveedores">Proveedores</button>
-        <button id="btn-ubicaciones">Ubicaciones</button>
-        <button id="btn-critico">Bajo mínimo</button>
-        <button id="btn-alertas">Alertas stock</button>
-        <button id="btn-equipos">Equipos</button>
-        <button id="btn-usuarios">Usuarios</button>
-        <button id="btn-config">Configuración</button>
-        <button id="btn-reconstruir">Reconstruir stock</button>
+        <button id="btn-conteo" class="destacado">📦 Contar inventario</button>
+        <button id="btn-salida">➖ Salida</button>
+        <button id="btn-devolucion">↩️ Devolución</button>
+        <button id="btn-stock">🔍 Ver stock</button>
+        <button id="btn-entrada">➕ Entrada</button>
+        <button id="btn-transferencia">🔁 Transferencia</button>
+        <button id="btn-ajuste">⚖️ Ajuste</button>
+        <button id="btn-movimientos">📋 Movimientos</button>
+        <button id="btn-critico">⚠️ Bajo mínimo</button>
+        <button id="btn-alertas">🔔 Alertas stock</button>
+        <button id="btn-refacciones">🔩 Refacciones</button>
+        <button id="btn-revisar">🆕 Por revisar <span id="badge-revisar"></span></button>
+        <button id="btn-conteos">🧮 Conteos</button>
+        <button id="btn-etiquetas">🏷️ Etiquetas QR</button>
+        <button id="btn-equipos">🏭 Equipos</button>
+        <button id="btn-proveedores">🚚 Proveedores</button>
+        <button id="btn-ubicaciones">📍 Ubicaciones</button>
+        <button id="btn-usuarios">👥 Usuarios</button>
+        <button id="btn-config">⚙️ Configuración</button>
+        <button id="btn-reconstruir">♻️ Reconstruir stock</button>
       </div>
     </section>
 
     <!-- STOCK -->
     <section id="view-stock" class="hidden">
       <h2>Stock actual</h2>
+      <div class="fila-scan" style="margin-bottom:12px;">
+        <input id="stock-buscar" placeholder="Buscar código, descripción o ubicación..." autocomplete="off" />
+        <button class="btn-scan" id="btn-scan-stock" title="Escanear QR">📷</button>
+      </div>
       <div id="lista-stock"></div>
       <button class="btn-primary" onclick="App.volverAlMenu()">Volver</button>
     </section>
@@ -539,13 +584,175 @@
       </div>
     </section>
 
+    <!-- CONTEO -->
+    <section id="view-conteo" class="hidden">
+      <h2>Contar inventario</h2>
+      <label>Ubicación</label>
+      <div class="fila-scan">
+        <select id="conteo-ubicacion"></select>
+        <button class="btn-scan" id="btn-scan-ubic" title="Escanear etiqueta de ubicación">📷</button>
+      </div>
+
+      <div id="conteo-buscador">
+        <label>Pieza</label>
+        <div class="fila-scan">
+          <input id="conteo-buscar" placeholder="Escribe código o lo que es (ej. balero 6205)" autocomplete="off" />
+          <button class="btn-scan" id="btn-scan-pieza" title="Escanear etiqueta de la pieza">📷</button>
+        </div>
+        <div id="conteo-resultados"></div>
+        <button class="btn-secundario btn-ancho" id="btn-pieza-nueva">➕ No aparece: es una pieza nueva</button>
+      </div>
+
+      <div id="conteo-panel" class="hidden tarjeta-conteo">
+        <div id="conteo-codigo" class="conteo-codigo"></div>
+        <div id="conteo-desc" class="conteo-desc"></div>
+        <div id="conteo-info" class="conteo-info"></div>
+        <label style="margin-top:8px;">¿Cuántas hay en esta ubicación?</label>
+        <div class="contador">
+          <button type="button" id="btn-menos">−</button>
+          <input id="conteo-cantidad" type="number" inputmode="decimal" min="0" step="any" />
+          <button type="button" id="btn-mas">+</button>
+        </div>
+        <div id="conteo-unidad" class="conteo-info" style="text-align:center;"></div>
+        <div id="conteo-ya" class="aviso hidden">
+          <div id="conteo-ya-texto"></div>
+          <label><input type="radio" name="conteo-modo" value="reemplazar" checked /> Lo que escribo es el total (corrijo)</label>
+          <label><input type="radio" name="conteo-modo" value="sumar" /> Encontré más: súmalo</label>
+        </div>
+        <input id="conteo-notas" placeholder="Notas (opcional)" />
+        <p id="conteo-status" class="send-status"></p>
+        <div class="form-acciones">
+          <button class="btn-secundario" id="btn-conteo-cancelar">Cancelar</button>
+          <button class="btn-primary" id="btn-conteo-guardar">Guardar conteo</button>
+        </div>
+      </div>
+
+      <h3>Contado hoy aquí <span id="conteo-avance" class="ayuda"></span></h3>
+      <div id="conteo-lista"></div>
+      <details style="margin:12px 0;">
+        <summary>En sistema pero no contado hoy (<span id="conteo-faltan-n">0</span>)</summary>
+        <div id="conteo-faltan"></div>
+      </details>
+      <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
+    </section>
+
+    <!-- PIEZA NUEVA (alta rápida desde el conteo) -->
+    <section id="view-pieza-nueva" class="hidden">
+      <h2>Pieza nueva</h2>
+      <p class="ayuda">Escribe qué es. La app sugiere la clasificación y te avisa si ya existe algo parecido.</p>
+      <label>Descripción *</label>
+      <input id="pn-desc" placeholder="QUÉ ES + TIPO + MEDIDA + DETALLE" autocomplete="off" />
+      <div id="pn-preview" class="ayuda"></div>
+      <div id="pn-similares" class="aviso hidden"></div>
+      <label>Clasificación *</label>
+      <div id="pn-sugerencias" class="chips"></div>
+      <select id="pn-clasif"></select>
+      <div id="pn-ejemplos" class="ayuda"></div>
+      <div class="form-grid">
+        <div class="form-grupo">
+          <label>Unidad *</label>
+          <select id="pn-unidad"></select>
+        </div>
+        <div class="form-grupo">
+          <label>Cantidad contada *</label>
+          <input id="pn-cantidad" type="number" inputmode="decimal" min="0" step="any" />
+        </div>
+        <div class="form-grupo">
+          <label>Marca</label>
+          <input id="pn-marca" placeholder="Si se ve en la pieza o caja" />
+        </div>
+        <div class="form-grupo">
+          <label>No. de parte / modelo</label>
+          <input id="pn-parte" />
+        </div>
+        <div class="form-grupo">
+          <label>Equipo donde se usa</label>
+          <select id="pn-equipo"></select>
+        </div>
+        <div class="form-grupo">
+          <label>¿Toca el producto o es grado alimenticio?</label>
+          <select id="pn-grado">
+            <option value="NO">NO</option>
+            <option value="SI">SI</option>
+          </select>
+        </div>
+      </div>
+      <p id="pn-status" class="send-status"></p>
+      <div class="form-acciones">
+        <button class="btn-secundario" id="btn-pn-cancelar">Cancelar</button>
+        <button class="btn-primary" id="btn-pn-guardar">Dar de alta y contar</button>
+      </div>
+    </section>
+
+    <!-- ALTA LISTA -->
+    <section id="view-alta-ok" class="hidden">
+      <h2 style="text-align:center;">✅ Pieza dada de alta</h2>
+      <p style="text-align:center;">Escribe este código en la caja o el lugar:</p>
+      <div id="alta-ok-codigo" class="codigo-grande"></div>
+      <p id="alta-ok-desc" style="text-align:center;"></p>
+      <p id="alta-ok-conteo" class="ayuda" style="text-align:center;"></p>
+      <p class="ayuda" style="text-align:center;">El supervisor imprimirá su etiqueta QR.</p>
+      <button class="btn-primary btn-ancho" id="btn-alta-ok-seguir">Contar otra pieza</button>
+    </section>
+
+    <!-- POR REVISAR -->
+    <section id="view-revisar" class="hidden">
+      <h2>Altas por revisar</h2>
+      <p class="ayuda">Piezas que dieron de alta los técnicos. Revisa clasificación y descripción; corrige con Editar.</p>
+      <div id="lista-revisar"></div>
+      <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
+    </section>
+
+    <!-- CONTEOS (supervisión) -->
+    <section id="view-conteos" class="hidden">
+      <h2>Conteos</h2>
+      <p id="conteos-modo" class="ayuda"></p>
+      <div id="lista-conteos"></div>
+      <div class="barra-acciones" id="conteos-acciones">
+        <button class="btn-primary" id="btn-aplicar-conteos">Aplicar seleccionados</button>
+        <button class="btn-secundario" id="btn-descartar-conteos">Descartar seleccionados</button>
+      </div>
+      <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
+    </section>
+
+    <!-- ETIQUETAS QR -->
+    <section id="view-etiquetas" class="hidden">
+      <h2>Etiquetas QR</h2>
+      <div class="chips">
+        <button class="chip activo" id="et-tab-piezas">Piezas</button>
+        <button class="chip" id="et-tab-ubic">Ubicaciones</button>
+      </div>
+      <div id="et-filtros">
+        <div class="chips">
+          <button class="chip" data-filtro="hoy">Nuevas de hoy</button>
+          <button class="chip" data-filtro="revisar">Por revisar</button>
+          <button class="chip activo" data-filtro="todas">Todas</button>
+        </div>
+        <input id="et-buscar" placeholder="Filtrar por código, descripción o ubicación..." autocomplete="off" />
+      </div>
+      <label class="check-fila" style="margin:10px 0;"><input type="checkbox" id="et-todas" /> Seleccionar todo lo que se ve</label>
+      <div id="lista-etiquetas"></div>
+      <div class="barra-acciones">
+        <button class="btn-primary" id="btn-imprimir-etiquetas">🖨️ Imprimir (0)</button>
+      </div>
+      <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
+    </section>
+
     <!-- LOADING -->
     <section id="view-loading" class="hidden">
       <p id="loading-text" style="text-align:center;padding:40px;color:#666;">Cargando...</p>
     </section>
   </main>
 
-  <script src="app.js?v=20261018b"></script>
+  <!-- Lector de QR con la cámara -->
+  <div id="scanner" class="scanner hidden">
+    <video id="scanner-video" playsinline muted autoplay></video>
+    <div class="scanner-marco"></div>
+    <p id="scanner-msg">Apunta al código QR</p>
+    <button id="scanner-cerrar">Cerrar</button>
+  </div>
+
+  <script src="app.js?v=20261018c"></script>
   <script>App.initApp();</script>
 </body>
 </html>

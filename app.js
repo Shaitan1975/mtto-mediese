@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════
-// SISTEMA DE MANTENIMIENTO MEDIESE - FRONTEND v1.4
+// SISTEMA DE MANTENIMIENTO MEDIESE - FRONTEND v1.5
 // Fase 1: Almacén de mantenimiento
 // Línea rediseñada + buscadores corregidos
 // ═══════════════════════════════════════════════════════════════════
@@ -194,6 +194,33 @@ const App = (() => {
     addEvent("btn-guardar-usuario", "click", guardarUsuario);
     addEvent("btn-guardar-pass", "click", guardarPassword);
     addEvent("btn-guardar-config", "click", guardarConfigApp);
+    // Conteo e inventario
+    addEvent("btn-conteo", "click", abrirConteo);
+    addEvent("btn-scan-ubic", "click", escanearEnConteo);
+    addEvent("btn-scan-pieza", "click", escanearEnConteo);
+    addEvent("btn-pieza-nueva", "click", abrirPiezaNueva);
+    addEvent("btn-mas", "click", () => ajustarCantidad(1));
+    addEvent("btn-menos", "click", () => ajustarCantidad(-1));
+    addEvent("btn-conteo-guardar", "click", guardarConteo);
+    addEvent("btn-conteo-cancelar", "click", cerrarPanelConteo);
+    addEvent("btn-pn-guardar", "click", guardarPiezaNueva);
+    addEvent("btn-pn-cancelar", "click", () => mostrarVista("view-conteo"));
+    addEvent("btn-alta-ok-seguir", "click", () => {
+      mostrarVista("view-conteo");
+      cargarResumenConteo();
+      document.getElementById("conteo-buscar").focus();
+    });
+    addEvent("conteo-cantidad", "keydown", (e) => { if (e.key === "Enter") guardarConteo(); });
+    addEvent("btn-revisar", "click", verRevisar);
+    addEvent("btn-conteos", "click", verConteos);
+    addEvent("btn-aplicar-conteos", "click", () => accionConteos("aplicar"));
+    addEvent("btn-descartar-conteos", "click", () => accionConteos("descartar"));
+    addEvent("btn-etiquetas", "click", verEtiquetas);
+    addEvent("btn-imprimir-etiquetas", "click", imprimirEtiquetas);
+    // Contador de altas por revisar en el menú (supervisores)
+    if (["supervisor", "gerencia", "admin"].includes(usuarioActual.rol)) {
+      refrescarRefacciones().then(actualizarBadgeRevisar).catch(() => {});
+    }
     addEvent("btn-movimientos", "click", verMovimientos);
     addEvent("btn-refacciones", "click", verRefacciones);
     addEvent("btn-alertas", "click", verAlertas);
@@ -220,6 +247,7 @@ const App = (() => {
       ocultar("btn-entrada"); ocultar("btn-transferencia"); ocultar("btn-ajuste");
       ocultar("btn-refacciones"); ocultar("btn-equipos");
       ocultar("btn-usuarios"); ocultar("btn-config");
+      ocultar("btn-revisar"); ocultar("btn-conteos"); ocultar("btn-etiquetas");
       ocultar("btn-proveedores"); ocultar("btn-ubicaciones"); ocultar("btn-reconstruir");
     } else if (rol === "supervisor" || rol === "gerencia") {
       ocultar("btn-reconstruir"); ocultar("btn-usuarios"); ocultar("btn-config");
@@ -235,6 +263,7 @@ const App = (() => {
       "view-ubicaciones", "view-ubicacion-form",
       "view-equipos", "view-equipo-form", "view-usuarios", "view-usuario-form",
       "view-password", "view-config",
+      "view-conteo", "view-pieza-nueva", "view-alta-ok", "view-revisar", "view-conteos", "view-etiquetas",
       "view-loading"
     ].forEach(v => {
       const el = document.getElementById(v);
@@ -244,7 +273,10 @@ const App = (() => {
     if (el) el.classList.remove("hidden");
   }
 
-  function volverAlMenu() { mostrarVista("view-menu"); }
+  function volverAlMenu() {
+    mostrarVista("view-menu");
+    actualizarBadgeRevisar();
+  }
 
   // ═══════════════════════════════════════════════════════════════
   // FORMULARIO DE REFACCIÓN
@@ -635,12 +667,29 @@ const App = (() => {
       const r = await api("listar_stock");
       if (!r.ok) throw new Error(r.error || "Error desconocido");
       cache.stock = r.items;
+      const buscar = document.getElementById("stock-buscar");
+      buscar.value = "";
+      buscar.oninput = filtrarStock;
+      document.getElementById("btn-scan-stock").onclick = async () => {
+        const txt = await escanearQR();
+        if (!txt) return;
+        buscar.value = interpretarQR(txt).valor;
+        filtrarStock();
+      };
       renderStock(r.items);
       mostrarVista("view-stock");
     } catch (e) {
       alert("Error: " + e.message);
       volverAlMenu();
     }
+  }
+
+  function filtrarStock() {
+    const ws = palabras(document.getElementById("stock-buscar").value);
+    renderStock((cache.stock || []).filter(x => {
+      const t = sinAcentos(x.codigo + " " + x.descripcion + " " + x.ubicacion);
+      return ws.every(w => t.includes(w));
+    }));
   }
 
   function renderStock(items) {
@@ -788,15 +837,18 @@ const App = (() => {
     const buscadorRef = crearBuscador({
       placeholder: "Código o descripción...",
       obtenerDatos: async () => cache.refacciones,
-      filtrar: (item, q) =>
-        normalizar(item.codigo).includes(q) ||
-        normalizar(item.descripcion).includes(q),
+      filtrar: (item, q) => {
+        const t = sinAcentos(item.codigo + " " + item.descripcion + " " + (item.marca || ""));
+        return palabras(q).every(w => t.includes(w));
+      },
       renderItem: (item) =>
-        "<div class='buscador-cod'>" + item.codigo + "</div>" +
-        "<div class='buscador-desc'>" + item.descripcion + "</div>" +
-        "<div class='buscador-meta'>" + item.unidad + " · " + item.categoria + "</div>",
+        "<div class='buscador-cod'>" + esc(item.codigo) + "</div>" +
+        "<div class='buscador-desc'>" + esc(item.descripcion) + "</div>" +
+        "<div class='buscador-meta'>" + esc(item.unidad) + " · " + esc(item.categoria) + "</div>",
       renderSeleccion: (item) => item.codigo + " - " + item.descripcion,
-      onSelect: (item) => {
+      onSelect: (item) => alSeleccionarRef(item)
+    });
+    function alSeleccionarRef(item) {
         card.dataset.codigo = item.codigo;
         card.dataset.descripcion = item.descripcion;
         card.dataset.unidad = item.unidad;
@@ -809,10 +861,28 @@ const App = (() => {
         }
         cargarLotesDeRefaccion(card, item.codigo);
         recalcularSubtotal(card);
-      }
-    });
+    }
+    const filaRef = document.createElement("div");
+    filaRef.className = "fila-scan";
+    const btnScanRef = document.createElement("button");
+    btnScanRef.type = "button";
+    btnScanRef.className = "btn-scan";
+    btnScanRef.textContent = "📷";
+    btnScanRef.title = "Escanear etiqueta";
+    btnScanRef.onclick = async () => {
+      const txt = await escanearQR();
+      if (!txt) return;
+      const q = interpretarQR(txt);
+      if (q.tipo !== "pieza") return alert("Esa es una etiqueta de ubicación. Escanea la de la pieza.");
+      const item = piezaPorCodigo(q.valor);
+      if (!item) return alert("Código no encontrado: " + q.valor);
+      buscadorRef.setValue(item.codigo + " - " + item.descripcion);
+      alSeleccionarRef(item);
+    };
+    filaRef.appendChild(buscadorRef);
+    filaRef.appendChild(btnScanRef);
     grupoRef.appendChild(labelRef);
-    grupoRef.appendChild(buscadorRef);
+    grupoRef.appendChild(filaRef);
 
     const btnX = document.createElement("button");
     btnX.type = "button";
@@ -1999,6 +2069,786 @@ const App = (() => {
     const r = await api("guardar_config", { parametros: parametros }, "POST");
     if (!r.ok) return msg(st, "❌ " + r.error, "error");
     msg(st, "✅ " + r.mensaje, "ok");
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // TEXTO: normalizar como el servidor, palabras, sugerencias
+  // ═══════════════════════════════════════════════════════════════
+
+  function sinAcentos(t) {
+    return String(t || "").toUpperCase().replace(/Ñ/g, "\u0001")
+      .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\u0001/g, "Ñ");
+  }
+  function palabras(t) {
+    return sinAcentos(t).split(/[^A-Z0-9Ñ.\/-]+/).filter(w => w.length >= 2);
+  }
+
+  // Sustantivo → clasificación(es). La primera es la más probable.
+  const PALABRAS_CLASIF = {
+    BALERO: "MEC-ROD", RODAMIENTO: "MEC-ROD", CHUMACERA: "MEC-ROD", COJINETE: "MEC-ROD",
+    BANDA: ["MEC-TRA", "SAN-BAN"], CADENA: "MEC-TRA", CATARINA: "MEC-TRA", SPROCKET: "MEC-TRA",
+    POLEA: "MEC-TRA", ENGRANE: "MEC-TRA", PIÑON: "MEC-TRA", PINON: "MEC-TRA",
+    COPLE: ["MEC-COP", "TUB-CON"], ACOPLAMIENTO: "MEC-COP", ARAÑA: "MEC-COP", ARANA: "MEC-COP",
+    RETEN: "MEC-SEL", SELLO: "MEC-SEL", ORING: "MEC-SEL", "O-RING": "MEC-SEL", EMPAQUE: ["MEC-SEL", "SAN-CLA"], JUNTA: "MEC-SEL",
+    REDUCTOR: "MEC-RED", MOTORREDUCTOR: "MEC-RED", FLECHA: "MEC-RED", EJE: "MEC-RED",
+    BUJE: "MEC-BUJ", PERNO: "MEC-BUJ", RESORTE: "MEC-BUJ", PASADOR: "MEC-BUJ", CUÑA: "MEC-BUJ", CUNA: "MEC-BUJ",
+    MOTOR: "ELE-MOT",
+    CONTACTOR: "ELE-CTR", RELEVADOR: "ELE-CTR", RELE: "ELE-CTR", GUARDAMOTOR: "ELE-CTR", BOTON: "ELE-CTR",
+    BOTONERA: "ELE-CTR", SELECTOR: "ELE-CTR", TEMPORIZADOR: "ELE-CTR", PILOTO: ["ELE-CTR", "GAS-QUE"],
+    INTERRUPTOR: "ELE-PRO", FUSIBLE: "ELE-PRO", PASTILLA: "ELE-PRO", TERMOMAGNETICO: "ELE-PRO", BREAKER: "ELE-PRO",
+    VARIADOR: "ELE-VAR", ARRANCADOR: "ELE-VAR",
+    CABLE: "ELE-CAB", CONDUIT: "ELE-CAB", CHAROLA: "ELE-CAB", CANALETA: "ELE-CAB",
+    ZAPATA: "ELE-CON", TERMINAL: "ELE-CON", CLEMA: "ELE-CON", CONECTOR: ["ELE-CON", "NEU-MAN"], CONTACTO: "ELE-CON", CLAVIJA: "ELE-CON",
+    LAMPARA: "ELE-ILU", LUMINARIA: "ELE-ILU", FOCO: "ELE-ILU", REFLECTOR: "ELE-ILU", TUBO: ["TUB-TUB", "ELE-ILU"],
+    TERMOPAR: ["INS-TEM", "GAS-QUE"], RTD: "INS-TEM", PT100: "INS-TEM", TERMOMETRO: "INS-TEM", TERMOSTATO: "INS-TEM", CONTROLADOR: "INS-TEM",
+    MANOMETRO: "INS-PRE", TRANSMISOR: "INS-PRE", PRESOSTATO: "INS-PRE",
+    SENSOR: "INS-DET", FOTOCELDA: "INS-DET", FOTOELECTRICO: "INS-DET", INDUCTIVO: "INS-DET", LIMIT: "INS-DET", FINAL: "INS-DET",
+    PLC: "INS-AUT", HMI: "INS-AUT", MODULO: "INS-AUT", PANTALLA: "INS-AUT",
+    CELDA: "INS-BAS", BASCULA: "INS-BAS", INDICADOR: "INS-BAS",
+    ELECTROVALVULA: "NEU-VAL", SOLENOIDE: ["NEU-VAL", "GAS-REG"],
+    CILINDRO: "NEU-CIL", PISTON: "NEU-CIL", ACTUADOR: "NEU-CIL",
+    FRL: "NEU-FRL", LUBRICADOR: "NEU-FRL", REGULADOR: ["NEU-FRL", "GAS-REG"],
+    MANGUERA: ["NEU-MAN", "HID-MAN"], RAPIDO: "NEU-MAN",
+    BOMBA: ["HID-BOM", "SAN-BOM"], IMPULSOR: "SAN-BOM",
+    CLAMP: "SAN-CLA", "TRI-CLAMP": "SAN-CLA", TRICLAMP: "SAN-CLA", ABRAZADERA: "SAN-CLA",
+    PTR: "TUB-TUB", ANGULO: "TUB-TUB", SOLERA: "TUB-TUB", LAMINA: "TUB-TUB", PERFIL: "TUB-TUB", VARILLA: "TUB-TUB",
+    CODO: "TUB-CON", TEE: "TUB-CON", NIPLE: "TUB-CON", TUERCA: ["FER-TOR", "TUB-CON"], REDUCCION: "TUB-CON", BRIDA: "TUB-CON",
+    VALVULA: ["TUB-VAL", "NEU-VAL", "SAN-VAL", "HID-VAL"], LLAVE: ["HER-MAN", "TUB-VAL"],
+    ACEITE: "LUB-ACE", GRASA: "LUB-GRA", AFLOJATODO: "LUB-ESP", WD40: "LUB-ESP", "WD-40": "LUB-ESP", LUBRICANTE: ["LUB-ESP", "LUB-ACE"],
+    FILTRO: ["FIL-ACE", "FIL-AIR", "FIL-AGU"], CARTUCHO: ["FIL-AGU", "EPP-RES"], ELEMENTO: "FIL-AIR",
+    REFRIGERANTE: "FRI-GAS", GAS: ["FRI-GAS", "SOL-GAS"], COMPRESOR: "FRI-COM", EVAPORADOR: "FRI-COM", CONDENSADOR: "FRI-COM",
+    QUEMADOR: "GAS-QUE", ESPREA: "GAS-QUE",
+    ELECTRODO: "SOL-ELE", SOLDADURA: "SOL-ELE", MICROALAMBRE: "SOL-ELE", ALAMBRE: "SOL-ELE",
+    DISCO: "SOL-DIS", ARGON: "SOL-GAS", OXIGENO: "SOL-GAS", ACETILENO: "SOL-GAS",
+    DESENGRASANTE: "QUI-LIM", LIMPIADOR: "QUI-LIM", SOLVENTE: "QUI-LIM", THINNER: "QUI-LIM",
+    SILICON: "QUI-ADH", SILICONA: "QUI-ADH", PEGAMENTO: "QUI-ADH", ADHESIVO: "QUI-ADH", SELLADOR: "QUI-ADH", FIJADOR: "QUI-ADH", EPOXICO: "QUI-ADH",
+    PINTURA: "QUI-PIN", ESMALTE: "QUI-PIN", PRIMER: "QUI-PIN", ANTICORROSIVO: "QUI-PIN",
+    TORNILLO: "FER-TOR", RONDANA: "FER-TOR", ARANDELA: "FER-TOR", BIRLO: "FER-TOR", PIJA: "FER-TOR", ESPARRAGO: "FER-TOR", REMACHE: "FER-TOR",
+    ANCLA: "FER-ANC", TAQUETE: "FER-ANC",
+    CINTA: "FER-CIN", CINCHO: "FER-CIN", TEFLON: "FER-CIN",
+    LIJA: "FER-ABR", FIBRA: "FER-ABR",
+    CASCO: "EPP-CAB", CARETA: "EPP-CAB", LENTE: "EPP-OJO", LENTES: "EPP-OJO", GOGGLE: "EPP-OJO", GOGGLES: "EPP-OJO",
+    TAPON: "EPP-AUD", OREJERA: "EPP-AUD", CUBREBOCA: "EPP-RES", CUBREBOCAS: "EPP-RES", RESPIRADOR: "EPP-RES", MASCARILLA: "EPP-RES",
+    GUANTE: "EPP-MAN", BOTA: "EPP-PIE", ZAPATO: "EPP-PIE", CALZADO: "EPP-PIE", ARNES: "EPP-ALT", ESLINGA: "EPP-ALT",
+    COFIA: "EPP-ROP", BATA: "EPP-ROP", MANDIL: "EPP-ROP", CUBREBARBA: "EPP-ROP", OVEROL: "EPP-ROP",
+    DESARMADOR: "HER-MAN", PINZA: "HER-MAN", PINZAS: "HER-MAN", MARTILLO: "HER-MAN", DADO: "HER-MAN", MATRACA: "HER-MAN", SEGUETA: "HER-MAN",
+    TALADRO: "HER-ELE", ESMERILADORA: "HER-ELE", ROTOMARTILLO: "HER-ELE", PULIDORA: "HER-ELE",
+    MULTIMETRO: "HER-MED", VERNIER: "HER-MED", CALIBRADOR: "HER-MED", FLEXOMETRO: "HER-MED", AMPERIMETRO: "HER-MED", MICROMETRO: "HER-MED"
+  };
+
+  function buscarPalabra(w) {
+    const d = PALABRAS_CLASIF;
+    return d[w] || (w.endsWith("ES") && d[w.slice(0, -2)]) || (w.endsWith("S") && d[w.slice(0, -1)]) || null;
+  }
+
+  // Hasta 3 clasificaciones sugeridas ("MEC-ROD") para una descripción
+  function sugerirClasificacion(desc) {
+    const cat = cache.catalogos;
+    const ws = palabras(desc);
+    if (!cat || !ws.length) return [];
+    const validas = {};
+    cat.subfamilias.forEach(s => { validas[normalizar(s.familia) + "-" + normalizar(s.subfamilia)] = s; });
+    const pts = {};
+    const sumar = (k, p) => { if (validas[k]) pts[k] = (pts[k] || 0) + p; };
+    ws.forEach((w, i) => {
+      const hit = buscarPalabra(w);
+      if (hit) [].concat(hit).forEach((k, j) => sumar(k, (i === 0 ? 10 : 4) - j));
+    });
+    // Palabras que aparecen en el nombre o ejemplos de la subfamilia (ej. "filtro de AIRE")
+    Object.keys(validas).forEach(k => {
+      const s = validas[k];
+      const texto = " " + palabras(s.nombre + " " + (s.ejemplos || "")).join(" ") + " ";
+      ws.forEach(w => { if (w.length >= 3 && texto.includes(" " + w + " ")) sumar(k, 2); });
+    });
+    return Object.keys(pts).sort((a, b) => pts[b] - pts[a]).slice(0, 3);
+  }
+
+  // Piezas existentes parecidas a lo que se escribe (para no duplicar).
+  // Compara palabras sueltas ("6205-2RS" = "6205" + "2RS") y, sobre todo, números de modelo.
+  const PALABRAS_VACIAS = new Set(["DE", "LA", "EL", "LOS", "LAS", "CON", "PARA", "Y", "EN", "DEL", "AL", "POR"]);
+  function fichas(t) {
+    return palabras(t).flatMap(w => w.split(/[-\/]/))
+      .filter(w => w.length >= 2 && !PALABRAS_VACIAS.has(w))
+      .map(w => (w.length > 3 && /[A-Z]S$/.test(w)) ? w.slice(0, -1) : w);   // plural → singular: BALEROS = BALERO
+  }
+  function numerosModelo(t) {
+    return new Set((sinAcentos(t).match(/\d{3,}/g) || []));
+  }
+  function piezasSimilares(desc) {
+    const ws = fichas(desc);
+    if (ws.length < 2) return [];
+    const set = new Set(ws);
+    const nums = numerosModelo(desc);
+    return (cache.refacciones || []).map(r => {
+      const rw = fichas(r.descripcion + " " + (r.num_parte_fabricante || ""));
+      const comunes = rw.filter(w => set.has(w)).length;
+      let score = comunes / Math.max(set.size, rw.length);
+      const mismoSustantivo = rw[0] && rw[0] === ws[0];
+      if (mismoSustantivo) score += 0.15;
+      // Mismo sustantivo y mismo número de modelo (6205, 3800, 1750...) = muy probablemente la misma pieza
+      if (mismoSustantivo && Array.from(numerosModelo(r.descripcion + " " + (r.num_parte_fabricante || ""))).some(n => nums.has(n))) score += 0.35;
+      return { r: r, score: score };
+    }).filter(x => x.score >= 0.5).sort((a, b) => b.score - a.score).slice(0, 4).map(x => x.r);
+  }
+
+  // Búsqueda tolerante: todas las palabras escritas deben aparecer (código o descripción)
+  function buscarPiezas(q, lista, max) {
+    const ws = palabras(q);
+    if (!ws.length) return [];
+    return (lista || []).filter(r => {
+      const t = sinAcentos(r.codigo + " " + r.descripcion + " " + (r.marca || "") + " " + (r.num_parte_fabricante || ""));
+      return ws.every(w => t.includes(w));
+    }).slice(0, max || 10);
+  }
+
+  function difHtml(d) {
+    const n = Number(d) || 0;
+    if (n > 0) return "<span class='dif-pos'>+" + esc(n) + "</span>";
+    if (n < 0) return "<span class='dif-neg'>" + esc(n) + "</span>";
+    return "<span class='dif-cero'>sin diferencia</span>";
+  }
+
+  function vibrar(ms) { try { if (navigator.vibrate) navigator.vibrate(ms || 60); } catch (e) {} }
+
+  function guardarLocal(k, v) { try { localStorage.setItem("mtto_" + k, v); } catch (e) {} }
+  function leerLocal(k) { try { return localStorage.getItem("mtto_" + k); } catch (e) { return null; } }
+
+  async function refrescarRefacciones() {
+    const r = await api("listar_refacciones");
+    if (r.ok) cache.refacciones = r.refacciones;
+    return cache.refacciones || [];
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ESCÁNER QR (Android con BarcodeDetector; iPhone y otros con jsQR)
+  // ═══════════════════════════════════════════════════════════════
+
+  function cargarScript(src) {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector("script[data-lib='" + src + "']")) return resolve();
+      const s = document.createElement("script");
+      s.src = src;
+      s.dataset.lib = src;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error("No se pudo cargar " + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function escanearQR() {
+    const modal = document.getElementById("scanner");
+    const video = document.getElementById("scanner-video");
+    const aviso = document.getElementById("scanner-msg");
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Este navegador no permite usar la cámara. Escribe el código.");
+      return null;
+    }
+    let detector = null;
+    if ("BarcodeDetector" in window) {
+      try {
+        const formatos = await window.BarcodeDetector.getSupportedFormats();
+        if (formatos.includes("qr_code")) detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+      } catch (e) { detector = null; }
+    }
+    if (!detector) {
+      try { await cargarScript("jsQR.min.js"); }
+      catch (e) { alert("No se pudo cargar el lector de QR. Revisa tu conexión."); return null; }
+    }
+
+    return new Promise(async resolve => {
+      let terminado = false, stream = null;
+      const cerrar = (valor) => {
+        if (terminado) return;
+        terminado = true;
+        if (stream) stream.getTracks().forEach(t => t.stop());
+        video.srcObject = null;
+        modal.classList.add("hidden");
+        resolve(valor);
+      };
+      document.getElementById("scanner-cerrar").onclick = () => cerrar(null);
+      aviso.textContent = "Apunta al código QR";
+      modal.classList.remove("hidden");
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+      } catch (e) {
+        alert("No se pudo abrir la cámara. Permite el acceso a la cámara para este sitio en el navegador.");
+        return cerrar(null);
+      }
+      video.setAttribute("playsinline", "");
+      video.muted = true;
+      video.srcObject = stream;
+      try { await video.play(); } catch (e) { /* algunos iPhone requieren el toque inicial */ }
+
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      const leer = window.jsQR ? (window.jsQR.default || window.jsQR) : null;
+      const ciclo = async () => {
+        if (terminado) return;
+        if (video.readyState >= 2 && video.videoWidth) {
+          try {
+            if (detector) {
+              const r = await detector.detect(video);
+              if (r && r.length) { vibrar(80); return cerrar(r[0].rawValue); }
+            } else if (leer) {
+              const escala = Math.min(1, 640 / video.videoWidth);
+              canvas.width = Math.round(video.videoWidth * escala);
+              canvas.height = Math.round(video.videoHeight * escala);
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const r = leer(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+              if (r && r.data) { vibrar(80); return cerrar(r.data); }
+            }
+          } catch (e) { /* sigue intentando */ }
+        }
+        setTimeout(ciclo, 160);
+      };
+      ciclo();
+    });
+  }
+
+  // "UBI:ALMACEN_MTTO" → ubicación; cualquier otro texto → código de pieza
+  function interpretarQR(txt) {
+    const t = String(txt || "").trim().toUpperCase();
+    if (t.indexOf("UBI:") === 0) return { tipo: "ubicacion", valor: t.slice(4) };
+    return { tipo: "pieza", valor: t };
+  }
+
+  function piezaPorCodigo(codigo) {
+    return (cache.refacciones || []).find(r => normalizar(r.codigo) === normalizar(codigo)) || null;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // CONTEO DE INVENTARIO
+  // ═══════════════════════════════════════════════════════════════
+
+  const conteo = { item: null, resumen: null };
+
+  async function abrirConteo() {
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Preparando conteo...";
+    try {
+      await cargarCatalogos();
+      const ru = await api("listar_ubicaciones");
+      cache.ubicaciones = ru.ubicaciones || [];
+      await refrescarRefacciones();
+    } catch (e) {
+      alert("Error: " + e.message);
+      return volverAlMenu();
+    }
+    if (!cache.ubicaciones.length) {
+      alert("No hay ubicaciones dadas de alta. Pide al administrador que las cree.");
+      return volverAlMenu();
+    }
+    const sel = document.getElementById("conteo-ubicacion");
+    llenarSelect(sel, cache.ubicaciones, u => u.codigo, u => u.nombre + " (" + u.codigo + ")");
+    const ultima = leerLocal("ubicacion_conteo");
+    if (ultima && cache.ubicaciones.some(u => u.codigo === ultima)) sel.value = ultima;
+    sel.onchange = () => { guardarLocal("ubicacion_conteo", sel.value); cerrarPanelConteo(); cargarResumenConteo(); };
+
+    const buscar = document.getElementById("conteo-buscar");
+    buscar.value = "";
+    buscar.oninput = renderResultadosConteo;
+    document.getElementById("conteo-resultados").innerHTML = "";
+    cerrarPanelConteo();
+    mostrarVista("view-conteo");
+    cargarResumenConteo();
+  }
+
+  async function cargarResumenConteo() {
+    const ubic = document.getElementById("conteo-ubicacion").value;
+    const lista = document.getElementById("conteo-lista");
+    lista.innerHTML = "<p class='ayuda'>Cargando...</p>";
+    const r = await api("resumen_conteo", { ubicacion: ubic });
+    if (!r.ok) { lista.innerHTML = "<p class='ayuda'>" + esc(r.error) + "</p>"; return; }
+    if (ubic !== document.getElementById("conteo-ubicacion").value) return;   // cambió mientras cargaba
+    conteo.resumen = r;
+    renderResumenConteo();
+  }
+
+  function renderResumenConteo() {
+    const r = conteo.resumen;
+    if (!r) return;
+    const lista = document.getElementById("conteo-lista");
+    const contados = {};
+    r.conteos.forEach(c => { contados[normalizar(c.codigo)] = c; });
+    lista.innerHTML = r.conteos.length ? "" : "<p class='ayuda'>Todavía no hay piezas contadas hoy en esta ubicación.</p>";
+    r.conteos.forEach(c => {
+      const d = document.createElement("div");
+      d.className = "item-toque";
+      d.innerHTML = "<div><span class='cod'>" + esc(c.codigo) + "</span> · <b>" + esc(c.cantidad) + " " + esc(c.unidad) + "</b> · " +
+        (c.estado === "PENDIENTE" ? "<span class='ayuda'>pendiente</span>" : difHtml(c.diferencia)) + "</div>" +
+        "<div class='sub'>" + esc(c.descripcion) + "</div>" +
+        "<div class='sub'>" + esc(c.hora.slice(0, 5)) + " · " + esc(c.nombre_usuario || c.usuario) + "</div>";
+      d.onclick = () => { const p = piezaPorCodigo(c.codigo); if (p) seleccionarPiezaConteo(p); };
+      lista.appendChild(d);
+    });
+
+    const faltan = r.sistema.filter(x => !contados[normalizar(x.codigo)]);
+    document.getElementById("conteo-faltan-n").textContent = faltan.length;
+    const total = r.sistema.length + r.conteos.filter(c => !r.sistema.some(x => normalizar(x.codigo) === normalizar(c.codigo))).length;
+    document.getElementById("conteo-avance").textContent = total ? "(" + r.conteos.length + " de " + total + ")" : "";
+    const cf = document.getElementById("conteo-faltan");
+    cf.innerHTML = faltan.length ? "" : "<p class='ayuda'>Nada pendiente. 👍</p>";
+    faltan.forEach(x => {
+      const d = document.createElement("div");
+      d.className = "item-toque";
+      d.innerHTML = "<div><span class='cod'>" + esc(x.codigo) + "</span> · sistema: " + esc(x.saldo) + " " + esc(x.unidad) + "</div>" +
+        "<div class='sub'>" + esc(x.descripcion) + "</div>";
+      d.onclick = () => { const p = piezaPorCodigo(x.codigo); if (p) seleccionarPiezaConteo(p); };
+      cf.appendChild(d);
+    });
+  }
+
+  function renderResultadosConteo() {
+    const q = document.getElementById("conteo-buscar").value;
+    const cont = document.getElementById("conteo-resultados");
+    cont.innerHTML = "";
+    if (palabras(q).length === 0) return;
+    const res = buscarPiezas(q, cache.refacciones, 8);
+    if (!res.length) {
+      cont.innerHTML = "<p class='ayuda'>No encontré esa pieza. Si es nueva, usa el botón de abajo.</p>";
+      return;
+    }
+    res.forEach(p => {
+      const d = document.createElement("div");
+      d.className = "item-toque";
+      d.innerHTML = "<div class='cod'>" + esc(p.codigo) + "</div><div class='sub'>" + esc(p.descripcion) + "</div>";
+      d.onclick = () => seleccionarPiezaConteo(p);
+      cont.appendChild(d);
+    });
+  }
+
+  function seleccionarPiezaConteo(p) {
+    conteo.item = p;
+    const r = conteo.resumen || { sistema: [], conteos: [] };
+    const enSis = r.sistema.find(x => normalizar(x.codigo) === normalizar(p.codigo));
+    const ya = r.conteos.find(x => normalizar(x.codigo) === normalizar(p.codigo));
+    document.getElementById("conteo-codigo").textContent = p.codigo;
+    document.getElementById("conteo-desc").textContent = p.descripcion;
+    document.getElementById("conteo-info").textContent =
+      "En sistema aquí: " + (enSis ? enSis.saldo : 0) + " " + (p.unidad || "");
+    document.getElementById("conteo-unidad").textContent = p.unidad || "";
+    const boxYa = document.getElementById("conteo-ya");
+    if (ya) {
+      document.getElementById("conteo-ya-texto").innerHTML =
+        "Hoy ya contaste <b>" + esc(ya.cantidad) + " " + esc(ya.unidad) + "</b> (" + esc(ya.hora.slice(0, 5)) + ").";
+      boxYa.dataset.ya = ya.cantidad;
+      boxYa.classList.remove("hidden");
+      document.querySelector("input[name=conteo-modo][value=reemplazar]").checked = true;
+    } else {
+      boxYa.dataset.ya = "";
+      boxYa.classList.add("hidden");
+    }
+    document.getElementById("conteo-cantidad").value = "";
+    document.getElementById("conteo-notas").value = "";
+    msg(document.getElementById("conteo-status"), "");
+    document.getElementById("conteo-buscador").classList.add("hidden");
+    document.getElementById("conteo-panel").classList.remove("hidden");
+    document.getElementById("conteo-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+    setTimeout(() => document.getElementById("conteo-cantidad").focus(), 250);
+  }
+
+  function cerrarPanelConteo() {
+    conteo.item = null;
+    document.getElementById("conteo-panel").classList.add("hidden");
+    document.getElementById("conteo-buscador").classList.remove("hidden");
+  }
+
+  function ajustarCantidad(delta) {
+    const inp = document.getElementById("conteo-cantidad");
+    const v = Math.max(0, (Number(inp.value) || 0) + delta);
+    inp.value = Math.round(v * 1000) / 1000;
+  }
+
+  async function guardarConteo() {
+    const st = document.getElementById("conteo-status");
+    const p = conteo.item;
+    if (!p) return;
+    const txt = document.getElementById("conteo-cantidad").value;
+    let cant = Number(txt);
+    if (txt === "" || !isFinite(cant) || cant < 0) return msg(st, "❌ Escribe cuántas hay (0 si no hay ninguna)", "error");
+    const boxYa = document.getElementById("conteo-ya");
+    const modo = document.querySelector("input[name=conteo-modo]:checked").value;
+    if (boxYa.dataset.ya !== "" && modo === "sumar") cant = Number(boxYa.dataset.ya) + cant;
+    if (cant === 0 && !confirm("¿Confirmas que NO hay ninguna pieza en esta ubicación?")) return;
+
+    const btn = document.getElementById("btn-conteo-guardar");
+    btn.disabled = true;
+    msg(st, "Guardando...");
+    try {
+      const r = await api("registrar_conteo", {
+        ubicacion: document.getElementById("conteo-ubicacion").value,
+        codigo: p.codigo, cantidad: cant,
+        notas: document.getElementById("conteo-notas").value.trim()
+      }, "POST");
+      if (!r.ok) return msg(st, "❌ " + r.error, "error");
+      vibrar(60);
+      const buscar = document.getElementById("conteo-buscar");
+      buscar.value = "";
+      document.getElementById("conteo-resultados").innerHTML =
+        "<div class='aviso'>✅ " + esc(p.codigo) + ": " + esc(cant) + " " + esc(p.unidad || "") + " · " +
+        (r.estado === "PENDIENTE" ? "pendiente de aplicar" : difHtml(r.diferencia)) + "</div>";
+      cerrarPanelConteo();
+      cargarResumenConteo();
+      buscar.focus();
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function escanearEnConteo() {
+    const txt = await escanearQR();
+    if (!txt) return;
+    const q = interpretarQR(txt);
+    if (q.tipo === "ubicacion") {
+      const sel = document.getElementById("conteo-ubicacion");
+      if (!cache.ubicaciones.some(u => normalizar(u.codigo) === q.valor)) return alert("Ubicación no registrada: " + q.valor);
+      sel.value = cache.ubicaciones.find(u => normalizar(u.codigo) === q.valor).codigo;
+      guardarLocal("ubicacion_conteo", sel.value);
+      cerrarPanelConteo();
+      return cargarResumenConteo();
+    }
+    let p = piezaPorCodigo(q.valor);
+    if (!p) { await refrescarRefacciones(); p = piezaPorCodigo(q.valor); }
+    if (!p) return alert("Esa etiqueta no corresponde a una pieza activa: " + q.valor);
+    seleccionarPiezaConteo(p);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // PIEZA NUEVA (alta rápida mientras se cuenta)
+  // ═══════════════════════════════════════════════════════════════
+
+  let pnAuto = true;   // la clasificación la eligió la app (se puede cambiar sola)
+
+  function abrirPiezaNueva() {
+    const cat = cache.catalogos;
+    const $ = id => document.getElementById(id);
+    llenarSelect($("pn-clasif"), cat.subfamilias,
+      s => normalizar(s.familia) + "-" + normalizar(s.subfamilia),
+      s => normalizar(s.familia) + "-" + normalizar(s.subfamilia) + " · " + s.nombre, "Elige o toca una sugerencia...");
+    llenarSelect($("pn-unidad"), cat.unidades, u => u.codigo, u => u.codigo + " — " + u.nombre);
+    $("pn-unidad").value = "PZ";
+    llenarSelect($("pn-equipo"), cat.equipos, q => q.codigo, q => q.codigo + " — " + q.nombre, "— Uso general —");
+    $("pn-desc").value = document.getElementById("conteo-buscar").value.trim();
+    ["pn-cantidad", "pn-marca", "pn-parte"].forEach(id => { $(id).value = ""; });
+    $("pn-grado").value = "NO";
+    pnAuto = true;
+    $("pn-desc").oninput = actualizarPiezaNueva;
+    $("pn-clasif").onchange = () => { pnAuto = false; mostrarEjemplosPN(); };
+    msg($("pn-status"), "");
+    actualizarPiezaNueva();
+    mostrarVista("view-pieza-nueva");
+    setTimeout(() => $("pn-desc").focus(), 250);
+  }
+
+  function mostrarEjemplosPN() {
+    const k = document.getElementById("pn-clasif").value;
+    const s = cache.catalogos.subfamilias.find(x => normalizar(x.familia) + "-" + normalizar(x.subfamilia) === k);
+    document.getElementById("pn-ejemplos").textContent = s && s.ejemplos ? "Ejemplos: " + s.ejemplos : "";
+    document.getElementById("pn-grado").value = k.indexOf("SAN-") === 0 ? "SI" : document.getElementById("pn-grado").value;
+    document.querySelectorAll("#pn-sugerencias .chip").forEach(c => c.classList.toggle("activo", c.dataset.k === k));
+  }
+
+  function actualizarPiezaNueva() {
+    const $ = id => document.getElementById(id);
+    const desc = $("pn-desc").value;
+    const limpio = sinAcentos(desc).replace(/\s+/g, " ").trim();
+    $("pn-preview").textContent = limpio ? "Quedará así: " + limpio : "Ej. BALERO RIGIDO DE BOLAS 6205-2RS · CONTACTOR TRIPOLAR 25 A 220 VCA";
+
+    // Sugerencias de clasificación
+    const sug = sugerirClasificacion(desc);
+    const cont = $("pn-sugerencias");
+    cont.innerHTML = "";
+    sug.forEach(k => {
+      const s = cache.catalogos.subfamilias.find(x => normalizar(x.familia) + "-" + normalizar(x.subfamilia) === k);
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip";
+      b.dataset.k = k;
+      b.textContent = k + " · " + (s ? s.nombre : "");
+      b.onclick = () => { $("pn-clasif").value = k; pnAuto = false; mostrarEjemplosPN(); };
+      cont.appendChild(b);
+    });
+    if (pnAuto && sug.length) { $("pn-clasif").value = sug[0]; }
+    if (pnAuto && !sug.length) { $("pn-clasif").value = ""; }
+    mostrarEjemplosPN();
+
+    // ¿Ya existe algo parecido?
+    const sim = piezasSimilares(desc);
+    const box = $("pn-similares");
+    if (!sim.length) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+    box.classList.remove("hidden");
+    box.innerHTML = "<b>¿Es alguna de estas? Si sí, tócala para contarla:</b>";
+    sim.forEach(p => {
+      const d = document.createElement("div");
+      d.className = "item-toque";
+      d.innerHTML = "<div class='cod'>" + esc(p.codigo) + "</div><div class='sub'>" + esc(p.descripcion) + "</div>";
+      d.onclick = () => { mostrarVista("view-conteo"); seleccionarPiezaConteo(p); };
+      box.appendChild(d);
+    });
+  }
+
+  async function guardarPiezaNueva() {
+    const $ = id => document.getElementById(id);
+    const st = $("pn-status");
+    const desc = $("pn-desc").value.trim();
+    const clasif = $("pn-clasif").value;
+    const cantTxt = $("pn-cantidad").value;
+    const cant = Number(cantTxt);
+    if (sinAcentos(desc).replace(/\s+/g, " ").trim().length < 8) return msg(st, "❌ Describe mejor la pieza (qué es, tipo y medida)", "error");
+    if (!clasif) return msg(st, "❌ Elige la clasificación (toca una sugerencia)", "error");
+    if (cantTxt === "" || !isFinite(cant) || cant < 0) return msg(st, "❌ Escribe la cantidad contada", "error");
+    const [familia, subfamilia] = clasif.split("-");
+    const ubic = document.getElementById("conteo-ubicacion").value;
+
+    const btn = $("btn-pn-guardar");
+    btn.disabled = true;
+    msg(st, "Dando de alta...");
+    try {
+      const r = await api("crear_refaccion", {
+        familia: familia, subfamilia: subfamilia, descripcion: desc,
+        unidad: $("pn-unidad").value, marca: $("pn-marca").value.trim(),
+        num_parte_fabricante: $("pn-parte").value.trim(), equipo_aplica: $("pn-equipo").value,
+        grado_alimenticio: $("pn-grado").value, ubicacion_defecto: ubic
+      }, "POST");
+      if (!r.ok) {
+        const m = String(r.error || "").match(/[A-Z]{3}-[A-Z]{3}-\d{4}/);
+        msg(st, "❌ " + r.error + (m ? " — toca la sugerencia de arriba o búscala por ese código." : ""), "error");
+        return;
+      }
+      const c = await api("registrar_conteo", { ubicacion: ubic, codigo: r.codigo, cantidad: cant }, "POST");
+      await refrescarRefacciones();
+      vibrar(120);
+      $("alta-ok-codigo").textContent = r.codigo;
+      $("alta-ok-desc").textContent = r.descripcion;
+      $("alta-ok-conteo").textContent = c.ok
+        ? "Contadas: " + cant + " " + $("pn-unidad").value + " en " + ubic
+        : "⚠️ El alta quedó, pero el conteo no se guardó: " + c.error + ". Cuéntala de nuevo.";
+      document.getElementById("conteo-buscar").value = "";
+      document.getElementById("conteo-resultados").innerHTML = "";
+      mostrarVista("view-alta-ok");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // POR REVISAR (supervisor)
+  // ═══════════════════════════════════════════════════════════════
+
+  async function verRevisar() {
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando altas por revisar...";
+    await refrescarRefacciones();
+    const items = (cache.refacciones || []).filter(r => r.revisado === "NO");
+    const cont = document.getElementById("lista-revisar");
+    cont.innerHTML = items.length ? "" : "<p style='text-align:center;padding:20px;color:#888;'>Nada por revisar. 👍</p>";
+    items.forEach(x => {
+      const d = document.createElement("div");
+      d.className = "ref-item";
+      d.innerHTML =
+        "<div class='ref-cod'>" + esc(x.codigo) + "</div>" +
+        "<div class='ref-info'>" + esc(x.fecha_alta) + " · " + esc(x.usuario_alta) + "</div>" +
+        "<div class='ref-desc'>" + esc(x.descripcion) + "</div>" +
+        "<div class='ref-info'>" + esc([x.unidad, x.marca, x.num_parte_fabricante, x.equipo_aplica].filter(Boolean).join(" · ")) + "</div>";
+      const acc = document.createElement("div");
+      acc.style.cssText = "margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;";
+      const bE = document.createElement("button");
+      bE.className = "btn-secundario";
+      bE.textContent = "✏️ Corregir";
+      bE.onclick = () => abrirFormRefaccion(x.codigo);
+      const bOk = document.createElement("button");
+      bOk.className = "btn-primary";
+      bOk.textContent = "✅ Está bien";
+      bOk.onclick = async () => {
+        const r = await api("marcar_revisado", { codigo: x.codigo }, "POST");
+        if (!r.ok) return alert("Error: " + r.error);
+        x.revisado = "SI";
+        d.remove();
+        actualizarBadgeRevisar();
+      };
+      acc.appendChild(bE);
+      acc.appendChild(bOk);
+      d.appendChild(acc);
+      cont.appendChild(d);
+    });
+    actualizarBadgeRevisar();
+    mostrarVista("view-revisar");
+  }
+
+  function actualizarBadgeRevisar() {
+    const n = (cache.refacciones || []).filter(r => r.revisado === "NO").length;
+    const b = document.getElementById("badge-revisar");
+    if (b) b.textContent = n ? "(" + n + ")" : "";
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // CONTEOS (supervisor): ver, aplicar pendientes, descartar
+  // ═══════════════════════════════════════════════════════════════
+
+  async function verConteos() {
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando conteos...";
+    const r = await api("listar_conteos");
+    if (!r.ok) { alert("Error: " + r.error); return volverAlMenu(); }
+    document.getElementById("conteos-modo").textContent = r.directo
+      ? "Modo tiempo real: cada conteo ya ajustó el stock. Aquí revisas diferencias."
+      : "Modo con aprobación: los conteos pendientes no mueven el stock hasta que los apliques.";
+    const pendientes = r.conteos.filter(c => c.estado === "PENDIENTE").length;
+    document.getElementById("conteos-acciones").style.display = pendientes ? "" : "none";
+    const cont = document.getElementById("lista-conteos");
+    cont.innerHTML = r.conteos.length ? "" : "<p style='text-align:center;padding:20px;color:#888;'>Sin conteos.</p>";
+    r.conteos.forEach(c => {
+      const d = document.createElement("div");
+      d.className = "item-toque";
+      const check = c.estado === "PENDIENTE" ? "<input type='checkbox' class='chk-conteo' value='" + esc(c.id) + "' />" : "";
+      d.innerHTML = "<div class='check-fila'>" + check + "<div style='flex:1'>" +
+        "<div><span class='cod'>" + esc(c.codigo) + "</span> · " + esc(c.ubicacion) + " · <b>" + esc(c.cantidad) + " " + esc(c.unidad) + "</b></div>" +
+        "<div class='sub'>" + esc(c.descripcion) + "</div>" +
+        "<div class='sub'>" + esc(c.fecha) + " " + esc(c.hora.slice(0, 5)) + " · " + esc(c.nombre_usuario || c.usuario) + " · " + esc(c.estado) +
+        (c.estado === "APLICADO" ? " · " + difHtml(c.diferencia) + " (sistema " + esc(c.saldo_sistema) + ")" : "") + "</div>" +
+        (c.notas ? "<div class='sub'>📝 " + esc(c.notas) + "</div>" : "") +
+        "</div></div>";
+      cont.appendChild(d);
+    });
+    mostrarVista("view-conteos");
+  }
+
+  async function accionConteos(accion) {
+    const ids = Array.from(document.querySelectorAll(".chk-conteo:checked")).map(c => c.value);
+    if (!ids.length) return alert("Selecciona al menos un conteo pendiente.");
+    if (accion === "aplicar") {
+      if (!confirm("¿Aplicar " + ids.length + " conteo(s)? El stock quedará igual a lo contado.")) return;
+      const r = await api("aplicar_conteos", { ids: ids }, "POST");
+      alert(r.ok ? "✅ " + r.mensaje : "Error: " + r.error);
+    } else {
+      if (!confirm("¿Descartar " + ids.length + " conteo(s)?")) return;
+      for (const id of ids) {
+        const r = await api("descartar_conteo", { id_conteo: id }, "POST");
+        if (!r.ok) { alert("Error en " + id + ": " + r.error); break; }
+      }
+    }
+    verConteos();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ETIQUETAS QR (imprimir)
+  // ═══════════════════════════════════════════════════════════════
+
+  const etiquetas = { modo: "piezas", filtro: "todas", seleccion: new Set() };
+
+  async function verEtiquetas() {
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando...";
+    await refrescarRefacciones();
+    const ru = await api("listar_ubicaciones");
+    cache.ubicaciones = ru.ubicaciones || [];
+    etiquetas.seleccion = new Set();
+    document.getElementById("et-buscar").value = "";
+    document.getElementById("et-buscar").oninput = renderEtiquetas;
+    document.getElementById("et-tab-piezas").onclick = () => cambiarModoEtiquetas("piezas");
+    document.getElementById("et-tab-ubic").onclick = () => cambiarModoEtiquetas("ubicaciones");
+    document.querySelectorAll("#et-filtros [data-filtro]").forEach(b => {
+      b.onclick = () => {
+        etiquetas.filtro = b.dataset.filtro;
+        document.querySelectorAll("#et-filtros [data-filtro]").forEach(x => x.classList.toggle("activo", x === b));
+        renderEtiquetas();
+      };
+    });
+    document.getElementById("et-todas").onchange = (e) => {
+      itemsEtiquetasVisibles().forEach(it => { if (e.target.checked) etiquetas.seleccion.add(it.qr); else etiquetas.seleccion.delete(it.qr); });
+      renderEtiquetas();
+    };
+    cambiarModoEtiquetas("piezas");
+    mostrarVista("view-etiquetas");
+  }
+
+  function cambiarModoEtiquetas(modo) {
+    etiquetas.modo = modo;
+    etiquetas.seleccion = new Set();
+    document.getElementById("et-tab-piezas").classList.toggle("activo", modo === "piezas");
+    document.getElementById("et-tab-ubic").classList.toggle("activo", modo === "ubicaciones");
+    document.getElementById("et-filtros").querySelector(".chips").style.display = modo === "piezas" ? "" : "none";
+    renderEtiquetas();
+  }
+
+  function hoyTexto() {
+    const d = new Date();
+    return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0") + "/" + d.getFullYear();
+  }
+
+  // Lista uniforme: { qr, titulo, sub, extra }
+  function itemsEtiquetasVisibles() {
+    const q = palabras(document.getElementById("et-buscar").value);
+    const pasa = t => q.every(w => sinAcentos(t).includes(w));
+    if (etiquetas.modo === "ubicaciones") {
+      return cache.ubicaciones
+        .map(u => ({ qr: "UBI:" + normalizar(u.codigo), titulo: u.nombre, sub: "Ubicación " + u.codigo, extra: u.tipo || "" }))
+        .filter(it => pasa(it.titulo + " " + it.sub));
+    }
+    const hoy = hoyTexto();
+    return (cache.refacciones || [])
+      .filter(r => etiquetas.filtro === "todas" || (etiquetas.filtro === "hoy" ? r.fecha_alta === hoy : r.revisado === "NO"))
+      .map(r => ({ qr: r.codigo, titulo: r.codigo, sub: r.descripcion, extra: [r.unidad, r.ubicacion_defecto].filter(Boolean).join(" · ") }))
+      .filter(it => pasa(it.titulo + " " + it.sub + " " + it.extra));
+  }
+
+  function renderEtiquetas() {
+    const items = itemsEtiquetasVisibles();
+    const cont = document.getElementById("lista-etiquetas");
+    cont.innerHTML = items.length ? "" : "<p class='ayuda'>No hay nada con ese filtro.</p>";
+    items.slice(0, 300).forEach(it => {
+      const d = document.createElement("label");
+      d.className = "item-toque check-fila";
+      d.innerHTML = "<input type='checkbox' " + (etiquetas.seleccion.has(it.qr) ? "checked" : "") + " />" +
+        "<div><div class='cod'>" + esc(it.titulo) + "</div><div class='sub'>" + esc(it.sub) + "</div></div>";
+      d.querySelector("input").onchange = (e) => {
+        if (e.target.checked) etiquetas.seleccion.add(it.qr); else etiquetas.seleccion.delete(it.qr);
+        actualizarBotonImprimir();
+      };
+      cont.appendChild(d);
+    });
+    if (items.length > 300) cont.insertAdjacentHTML("beforeend", "<p class='ayuda'>Mostrando 300 de " + items.length + ". Filtra para ver otras.</p>");
+    document.getElementById("et-todas").checked = items.length > 0 && items.every(it => etiquetas.seleccion.has(it.qr));
+    actualizarBotonImprimir();
+  }
+
+  function actualizarBotonImprimir() {
+    document.getElementById("btn-imprimir-etiquetas").textContent = "🖨️ Imprimir (" + etiquetas.seleccion.size + ")";
+  }
+
+  async function imprimirEtiquetas() {
+    const todos = etiquetas.modo === "ubicaciones"
+      ? cache.ubicaciones.map(u => ({ qr: "UBI:" + normalizar(u.codigo), titulo: u.nombre, sub: "Ubicación " + u.codigo, extra: u.tipo || "" }))
+      : (cache.refacciones || []).map(r => ({ qr: r.codigo, titulo: r.codigo, sub: r.descripcion, extra: [r.unidad, r.ubicacion_defecto].filter(Boolean).join(" · ") }));
+    const items = todos.filter(it => etiquetas.seleccion.has(it.qr));
+    if (!items.length) return alert("Selecciona al menos una etiqueta.");
+    const w = window.open("", "_blank");
+    if (!w) return alert("Permite las ventanas emergentes de este sitio para imprimir.");
+    try { await cargarScript("qrcode.min.js"); }
+    catch (e) { w.close(); return alert("No se pudo cargar el generador de QR. Revisa tu conexión."); }
+
+    const html = items.map(it => {
+      const q = window.qrcode(0, "M");
+      q.addData(it.qr);
+      q.make();
+      return "<div class='et'><div class='qr'>" + q.createSvgTag({ cellSize: 3, margin: 0, scalable: true }) + "</div>" +
+        "<div class='tx'><div class='cod'>" + esc(it.titulo) + "</div><div class='desc'>" + esc(it.sub) + "</div>" +
+        "<div class='ext'>" + esc(it.extra) + "</div></div></div>";
+    }).join("");
+
+    w.document.write("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>" +
+      "<title>Etiquetas QR</title><style>" +
+      "@page{size:letter;margin:10mm} body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#000}" +
+      ".barra{padding:10px;background:#f1f5f9;font-size:14px} .barra button{font-size:16px;padding:8px 16px;margin-right:8px}" +
+      ".hoja{display:grid;grid-template-columns:repeat(3,62mm);gap:3mm 4mm;padding:2mm}" +
+      ".et{height:32mm;border:1px dashed #999;display:flex;gap:2mm;padding:2mm;box-sizing:border-box;overflow:hidden;break-inside:avoid;page-break-inside:avoid}" +
+      ".qr{width:27mm;height:27mm;flex:none} .qr svg{width:100%;height:100%;display:block}" +
+      ".tx{min-width:0} .cod{font-weight:bold;font-size:11pt;word-break:break-all} .desc{font-size:7.5pt;line-height:1.15;max-height:18mm;overflow:hidden;margin-top:1mm}" +
+      ".ext{font-size:7pt;color:#444;margin-top:1mm} @media print{.barra{display:none} .et{border-color:#ddd}}" +
+      "</style></head><body><div class='barra'><button onclick='window.print()'>🖨️ Imprimir</button>" + items.length +
+      " etiquetas · Papel carta, escala 100%</div><div class='hoja'>" + html + "</div></body></html>");
+    w.document.close();
   }
 
   // ═══════════════════════════════════════════════════════════════
