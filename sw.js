@@ -1,4 +1,4 @@
-const CACHE = "mtto-mediese-v99";
+const CACHE = "mtto-mediese-v100";
 const ARCHIVOS = [
   "./",
   "./index.html",

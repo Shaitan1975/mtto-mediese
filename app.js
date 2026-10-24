@@ -737,6 +737,10 @@ const App = (() => {
   // MOVIMIENTOS
   // ═══════════════════════════════════════════════════════════════
 
+  document.addEventListener("input", e => {
+    if (e.target && e.target.id === "mov-tc") document.querySelectorAll("#mov-lineas .linea-card").forEach(recalcularSubtotal);
+  });
+
   async function abrirMovimiento(tipo, ctx) {
     movCtx = ctx || null;
     document.getElementById("mov-titulo").textContent = tipo + (movCtx ? " · " + movCtx.ot : "");
@@ -759,6 +763,8 @@ const App = (() => {
     grupoSalida.classList.add("hidden");
     ayudaAjuste.classList.add("hidden");
     document.getElementById("mov-recibe").value = "";
+    document.getElementById("mov-tc").value = "";
+    document.getElementById("grupo-tc").classList.add("hidden");
 
     if (tipo === "SALIDA" || tipo === "DEVOLUCION") {
       try {
@@ -883,9 +889,17 @@ const App = (() => {
         card.dataset.codigo = item.codigo;
         card.dataset.descripcion = item.descripcion;
         card.dataset.unidad = item.unidad;
-        card.dataset.moneda = item.moneda;
+        card.dataset.moneda = normalizar(item.moneda) || "MXN";
         card.querySelector(".lin-pu").value = item.pu || 0;
-        card.querySelector(".lin-iva").value = item.iva || 0;
+        // Tasa de IVA del catálogo (IVA guardado por unidad / PU); si no hay PU, 16 %
+        const pu0 = Number(item.pu) || 0, iva0 = Number(item.iva) || 0;
+        let tasa = pu0 > 0 ? Math.round(iva0 / pu0 * 100) : (iva0 > 0 ? 16 : 16);
+        if (![0, 8, 16].includes(tasa)) tasa = tasa > 12 ? 16 : tasa > 4 ? 8 : 0;
+        card.querySelector(".lin-tasa").value = String(tasa);
+        recalcularIvaLinea(card);
+        const et = card.querySelector(".lin-moneda");
+        if (et) { et.textContent = card.dataset.moneda; et.classList.toggle("usd", card.dataset.moneda === "USD"); }
+        actualizarTipoCambio();
         if (item.ubicacion_defecto) {
           const selUbic = card.querySelector(".lin-ubicacion");
           if (selUbic) selUbic.value = item.ubicacion_defecto;
@@ -922,6 +936,7 @@ const App = (() => {
     btnX.title = "Quitar línea";
     btnX.addEventListener("click", () => {
       card.remove();
+      actualizarTipoCambio();
       recalcularTotalMovimiento();
     });
 
@@ -994,9 +1009,26 @@ const App = (() => {
     inputPu.type = "number";
     inputPu.step = "0.01";
     inputPu.placeholder = "0";
-    inputPu.addEventListener("input", () => recalcularSubtotal(card));
+    inputPu.addEventListener("input", () => { recalcularIvaLinea(card); recalcularSubtotal(card); });
+    const etMoneda = document.createElement("span");
+    etMoneda.className = "lin-moneda";
+    etMoneda.textContent = "MXN";
+    labelPu.appendChild(document.createTextNode(" "));
+    labelPu.appendChild(etMoneda);
     grupoPu.appendChild(labelPu);
     grupoPu.appendChild(inputPu);
+
+    // Tasa de IVA
+    const grupoTasa = document.createElement("div");
+    grupoTasa.className = "linea-grupo linea-grupo-tasa";
+    const labelTasa = document.createElement("label");
+    labelTasa.textContent = "IVA %";
+    const selTasa = document.createElement("select");
+    selTasa.className = "lin-tasa";
+    selTasa.innerHTML = "<option value='16'>16 %</option><option value='8'>8 %</option><option value='0'>0 %</option>";
+    selTasa.addEventListener("change", () => { recalcularIvaLinea(card); recalcularSubtotal(card); });
+    grupoTasa.appendChild(labelTasa);
+    grupoTasa.appendChild(selTasa);
 
     // IVA
     const grupoIva = document.createElement("div");
@@ -1027,6 +1059,7 @@ const App = (() => {
     fila2.appendChild(grupoCant);
     fila2.appendChild(grupoUbic);
     fila2.appendChild(grupoPu);
+    fila2.appendChild(grupoTasa);
     fila2.appendChild(grupoIva);
     fila2.appendChild(grupoSub);
 
@@ -1048,25 +1081,57 @@ const App = (() => {
     recalcularTotalMovimiento();
   }
 
-  function recalcularSubtotal(card) {
+  // IVA por unidad = PU × tasa (se recalcula al cambiar PU o tasa; se puede corregir a mano)
+  function recalcularIvaLinea(card) {
+    const pu = Number(card.querySelector(".lin-pu").value) || 0;
+    const tasa = Number(card.querySelector(".lin-tasa") ? card.querySelector(".lin-tasa").value : 16) || 0;
+    card.querySelector(".lin-iva").value = Math.round(pu * tasa) / 100;
+  }
+
+  function tipoCambioMov() {
+    const el = document.getElementById("mov-tc");
+    return el ? Number(el.value) || 0 : 0;
+  }
+  function hayLineasUSD() {
+    return Array.from(document.querySelectorAll("#mov-lineas .linea-card")).some(c => c.dataset.moneda === "USD");
+  }
+  // Muestra el campo de tipo de cambio solo en ENTRADAS con alguna línea en dólares
+  function actualizarTipoCambio() {
+    const g = document.getElementById("grupo-tc");
+    if (!g) return;
+    const ver = document.getElementById("mov-tipo").value === "ENTRADA" && hayLineasUSD();
+    g.classList.toggle("hidden", !ver);
+    recalcularTotalMovimiento();
+  }
+
+  function montosLinea_(card) {
     const cant = Number(card.querySelector(".lin-cantidad").value) || 0;
     const pu = Number(card.querySelector(".lin-pu").value) || 0;
     const iva = Number(card.querySelector(".lin-iva").value) || 0;
-    const subtotal = (pu + iva) * cant;
-    card.querySelector(".lin-subtotal").textContent = fmtMoneda(subtotal);
+    const usd = card.dataset.moneda === "USD";
+    const total = (pu + iva) * cant;
+    return { usd: usd, total: total, mxn: usd ? total * tipoCambioMov() : total };
+  }
+
+  function recalcularSubtotal(card) {
+    const m = montosLinea_(card);
+    card.querySelector(".lin-subtotal").textContent = m.usd
+      ? fmtMoneda(m.total) + " USD" + (tipoCambioMov() ? " · " + fmtMoneda(m.mxn) + " MXN" : "")
+      : fmtMoneda(m.total);
     recalcularTotalMovimiento();
   }
 
   function recalcularTotalMovimiento() {
-    let total = 0;
+    let mxn = 0, usd = 0;
     document.querySelectorAll("#mov-lineas .linea-card").forEach(card => {
-      const cant = Number(card.querySelector(".lin-cantidad").value) || 0;
-      const pu = Number(card.querySelector(".lin-pu").value) || 0;
-      const iva = Number(card.querySelector(".lin-iva").value) || 0;
-      total += (pu + iva) * cant;
+      const m = montosLinea_(card);
+      mxn += m.mxn;
+      if (m.usd) usd += m.total;
     });
     const cont = document.getElementById("mov-total");
-    if (cont) cont.textContent = fmtMoneda(total);
+    if (!cont) return;
+    if (usd && !tipoCambioMov()) cont.textContent = fmtMoneda(usd) + " USD (falta tipo de cambio)";
+    else cont.textContent = fmtMoneda(mxn) + " MXN" + (usd ? " (incluye " + fmtMoneda(usd) + " USD)" : "");
   }
 
   function duplicarLinea(card) {
@@ -1076,6 +1141,8 @@ const App = (() => {
     const ubicacion = card.querySelector(".lin-ubicacion").value;
     const pu = card.querySelector(".lin-pu").value;
     const iva = card.querySelector(".lin-iva").value;
+    const tasa = card.querySelector(".lin-tasa") ? card.querySelector(".lin-tasa").value : "16";
+    const moneda = card.dataset.moneda || "MXN";
 
     agregarLinea().then(() => {
       const cont = document.getElementById("mov-lineas");
@@ -1091,7 +1158,13 @@ const App = (() => {
       if (loteBuscador && loteBuscador.setValue) loteBuscador.setValue(lote);
       nueva.querySelector(".lin-ubicacion").value = ubicacion;
       nueva.querySelector(".lin-pu").value = pu;
+      nueva.querySelector(".lin-tasa").value = tasa;
       nueva.querySelector(".lin-iva").value = iva;
+      nueva.dataset.moneda = moneda;
+      const et = nueva.querySelector(".lin-moneda");
+      if (et) { et.textContent = moneda; et.classList.toggle("usd", moneda === "USD"); }
+      actualizarTipoCambio();
+      recalcularSubtotal(nueva);
     });
   }
 
@@ -1177,6 +1250,16 @@ const App = (() => {
       status.className = "send-status error";
       return;
     }
+    if (tipo === "ENTRADA" && lineas.some(l => l.moneda === "USD")) {
+      const tc = tipoCambioMov();
+      if (!(tc > 0)) {
+        status.textContent = "❌ Escribe el tipo de cambio de esta entrada (el de la factura o del día)";
+        status.className = "send-status error";
+        document.getElementById("mov-tc").focus();
+        return;
+      }
+      if ((tc < 5 || tc > 50) && !confirm("¿El tipo de cambio es " + tc + "? Revisa que esté bien.")) return;
+    }
 
     // usuario y rol los pone el servidor a partir de la sesión
     const body = {
@@ -1190,7 +1273,7 @@ const App = (() => {
       recibe: (tipo === "SALIDA" || tipo === "DEVOLUCION") ? recibe : "",
       notas: notas,
       moneda: "MXN",
-      tipo_cambio: 0,
+      tipo_cambio: tipo === "ENTRADA" && lineas.some(l => l.moneda === "USD") ? tipoCambioMov() : 0,
       lineas: lineas
     };
 

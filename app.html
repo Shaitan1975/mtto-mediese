@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Mantenimiento Mediese</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=20261024a" />
   <link rel="icon" type="image/svg+xml" href="icono.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
@@ -107,6 +107,11 @@
       <div id="grupo-proveedor">
         <label>Proveedor / Cliente</label>
         <div id="mov-proveedor-container"></div>
+      </div>
+      <div id="grupo-tc" class="hidden grupo-tc">
+        <label>Tipo de cambio de esta entrada (USD → MXN) *</label>
+        <input id="mov-tc" type="number" step="0.0001" min="0" inputmode="decimal" placeholder="Ej. 18.4520 (el de la factura o del día)" />
+        <p class="ayuda-tc">Hay piezas en dólares. El costo en pesos se calcula con este tipo de cambio y queda guardado con la entrada.</p>
       </div>
       <div id="grupo-salida" class="hidden">
         <label>Equipo / máquina</label>
@@ -831,7 +836,7 @@
     <button id="scanner-cerrar">Cerrar</button>
   </div>
 
-  <script src="app.js?v=20261018e"></script>
+  <script src="app.js?v=20261024a"></script>
   <script>App.initApp();</script>
 </body>
 </html>

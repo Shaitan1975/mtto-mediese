@@ -417,3 +417,11 @@ input[disabled] {
   color: #6b7280;
   cursor: not-allowed;
 }
+
+/* v1024 — moneda, tasa de IVA y tipo de cambio por entrada */
+.lin-moneda { font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 6px; background: #e5e7eb; color: #374151; }
+.lin-moneda.usd { background: #dbeafe; color: #1d4ed8; }
+.linea-grupo-tasa select { min-width: 70px; }
+.grupo-tc { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
+.grupo-tc input { font-size: 18px; font-weight: 700; }
+.ayuda-tc { font-size: 12px; color: #1e3a8a; margin: 6px 0 0; }
