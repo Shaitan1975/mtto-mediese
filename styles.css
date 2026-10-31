@@ -446,3 +446,13 @@ input[disabled] {
 
 .aviso-campo { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 10px; margin: 10px 0; font-size: 14px; }
 .aviso-campo .btn-ancho { margin-top: 8px; }
+
+.otd-linea { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; margin-bottom: 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; position: relative; }
+.otd-linea .otd-concepto { grid-column: 1 / -1; padding-right: 36px; }
+.otd-linea .otd-equipo { grid-column: 1 / -1; }
+.otd-linea input, .otd-linea select { width: 100%; box-sizing: border-box; min-width: 0; }
+.otd-quitar { position: absolute; top: 8px; right: 8px; border: none; background: #fee2e2; color: #b91c1c; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; }
+.otd-total { text-align: right; font-size: 16px; margin: 6px 0; }
+.otd-tabla { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+.otd-tabla th, .otd-tabla td { border-bottom: 1px solid #e2e8f0; padding: 4px; text-align: left; }
+.otd-tabla .num { text-align: right; }

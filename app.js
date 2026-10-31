@@ -3536,7 +3536,7 @@ const App = (() => {
       filaDato("Técnicos", esc(x.tecnicos_externos)) + filaDato("Acompaña", "👷 " + esc(o.nombre_asignado)) +
       filaDato("Fecha servicio", esc(x.fecha_servicio)) + filaDato("Área", esc(x.area)) + filaDato("Equipos", eqs) +
       filaDato("Costo servicio", x.costo_servicio ? fmtMoneda(x.costo_servicio) : "") + filaDato("Cotiz./factura", esc(x.doc_servicio)) +
-      "</div>";
+      htmlCostosOT(x) + "</div>";
     // 1. Permiso
     h += "<h3>1. Permiso de trabajo " + (x.permiso ? "<span class='ote-ok'>✅ autorizado</span>" : "<span class='ote-pend'>pendiente</span>") + "</h3>";
     h += x.permiso
@@ -3708,19 +3708,64 @@ const App = (() => {
       });
   }
 
+  // Datos del servicio + desglose de costos por trabajo (aunque sea la misma factura)
   function formDatosServicioOT() {
     const x = otVista.actual.externa;
+    const eqs = x.equipos_det;
+    let lineas = (x.costos || []).slice();
+    if (!lineas.length && x.costo_servicio) lineas = [{ concepto: "Servicio", equipo: "", importe: x.costo_servicio, factura: x.doc_servicio }];
+    if (!lineas.length) lineas = [{ concepto: "", equipo: "", importe: "", factura: x.doc_servicio }];
+    const optsEq = sel => "<option value=''>General (sin equipo)</option>" +
+      eqs.map(e => "<option value='" + esc(e.codigo) + "'" + (normalizar(sel) === normalizar(e.codigo) ? " selected" : "") + ">" + esc(e.codigo) + " " + esc(e.nombre) + "</option>").join("");
+    const fila = l => "<div class='otd-linea'>" +
+      "<input class='otd-concepto' placeholder='Concepto / trabajo' value='" + esc(l.concepto) + "'>" +
+      "<select class='otd-equipo'>" + optsEq(l.equipo) + "</select>" +
+      "<input class='otd-importe' type='number' inputmode='decimal' min='0' step='0.01' placeholder='Importe' value='" + esc(l.importe) + "'>" +
+      "<input class='otd-factura' placeholder='Factura' value='" + esc(l.factura || "") + "'>" +
+      "<button type='button' class='otd-quitar' title='Quitar'>✖</button></div>";
     formEnAcciones(
-      "<h3 style='margin-top:0'>💲 Datos del servicio</h3>" +
+      "<h3 style='margin-top:0'>💲 Datos y costos del servicio</h3>" +
       "<label>Técnicos del proveedor</label><input id='otd-tec' value='" + esc(x.tecnicos_externos) + "' />" +
-      "<label>Costo del servicio (MXN, sin IVA)</label><input id='otd-costo' type='number' min='0' step='0.01' value='" + esc(x.costo_servicio || "") + "' />" +
-      "<label>Cotización / factura</label><input id='otd-doc' value='" + esc(x.doc_servicio) + "' />",
+      "<label>Cotización / factura general</label><input id='otd-doc' value='" + esc(x.doc_servicio) + "' />" +
+      "<label>Desglose de costos (MXN, sin IVA)</label>" +
+      "<p class='ayuda'>Un renglón por trabajo. Si lo asignas a un equipo, ese costo aparece en el historial del equipo. Pueden ser de la misma factura.</p>" +
+      "<div id='otd-lineas'>" + lineas.map(fila).join("") + "</div>" +
+      "<button type='button' class='btn-secundario btn-ancho' id='otd-mas'>+ Otro concepto</button>" +
+      "<p class='otd-total'>Total: <b id='otd-total'></b></p>",
       async st => {
+        const costos = Array.from(document.querySelectorAll("#otd-lineas .otd-linea")).map(d => ({
+          concepto: d.querySelector(".otd-concepto").value.trim(), equipo: d.querySelector(".otd-equipo").value,
+          importe: d.querySelector(".otd-importe").value, factura: d.querySelector(".otd-factura").value.trim()
+        })).filter(l => l.concepto || l.importe);
         const r = await api("editar_ot_externa", { id_ot: otVista.actual.ot.id_ot, tecnicos: document.getElementById("otd-tec").value,
-          costo_servicio: document.getElementById("otd-costo").value || 0, doc_servicio: document.getElementById("otd-doc").value }, "POST");
+          doc_servicio: document.getElementById("otd-doc").value, costos: costos }, "POST");
         if (!r.ok) return msg(st, "❌ " + r.error, "error");
         verDetalleOT(otVista.actual.ot.id_ot);
       });
+    const cont = document.getElementById("otd-lineas");
+    const total = () => {
+      const t = Array.from(cont.querySelectorAll(".otd-importe")).reduce((a, i) => a + (Number(i.value) || 0), 0);
+      document.getElementById("otd-total").textContent = fmtMoneda(t);
+    };
+    const activar = () => {
+      cont.querySelectorAll(".otd-importe").forEach(i => { i.oninput = total; });
+      cont.querySelectorAll(".otd-quitar").forEach(b => { b.onclick = () => { b.parentElement.remove(); if (!cont.children.length) agregar(); total(); }; });
+    };
+    const agregar = () => {
+      const ult = cont.lastElementChild;
+      cont.insertAdjacentHTML("beforeend", fila({ concepto: "", equipo: "", importe: "", factura: ult ? ult.querySelector(".otd-factura").value : document.getElementById("otd-doc").value }));
+      activar();
+    };
+    document.getElementById("otd-mas").onclick = agregar;
+    activar(); total();
+  }
+
+  function htmlCostosOT(x) {
+    if (!(x.costos || []).length) return "";
+    return "<table class='otd-tabla'><tr><th>Concepto</th><th>Equipo</th><th>Factura</th><th class='num'>Importe</th></tr>" +
+      x.costos.map(l => "<tr><td>" + esc(l.concepto) + "</td><td>" + esc(l.equipo || "General") + "</td><td>" + esc(l.factura || "") +
+        "</td><td class='num'>" + fmtMoneda(l.importe) + "</td></tr>").join("") +
+      "<tr><th colspan='3'>Total</th><th class='num'>" + fmtMoneda(x.costo_servicio) + "</th></tr></table>";
   }
 
   // Reporte imprimible para el expediente BRC (contratistas)
@@ -3777,7 +3822,7 @@ const App = (() => {
       ".firmas{display:flex;gap:6mm;margin-top:14mm} .firma{flex:1;text-align:center;border-top:1px solid #000;padding-top:3px;font-size:8.5pt} .pie{margin-top:5mm;font-size:7pt;color:#666;text-align:right}" +
       ".folio{display:flex;gap:8px;align-items:center} .qrot svg{width:20mm;height:20mm;display:block} .cajas{font-size:8pt;white-space:nowrap}" +
       ".renglon{border-bottom:1px solid #999;height:6.5mm} .riesgo{font-size:8.5pt;margin:2px 0} .nota{font-size:8.5pt;background:#fef3c7;padding:4px 6px;margin-bottom:6px}" +
-      "tr{break-inside:avoid} @media print{.barra{display:none} .hoja{padding:0}}</style></head><body>" +
+      ".num{text-align:right;white-space:nowrap} tr{break-inside:avoid} @media print{.barra{display:none} .hoja{padding:0}}</style></head><body>" +
       "<div class='barra'><button onclick='window.print()'>🖨️ Imprimir / Guardar PDF</button>Papel carta</div><div class='hoja'>" +
       "<div class='enc'><div class='izq'>" + (logo ? "<img class='logo' src='" + esc(logo) + "' alt=''>" : "") +
         "<div><h1>ORDEN DE SERVICIO EXTERNO</h1><div class='sub'>Mantenimiento Mediese · Control de contratistas</div></div></div>" +
@@ -3789,6 +3834,7 @@ const App = (() => {
       "<tr>" + celda("Alcance", esc(o.descripcion_falla), 4) + "</tr>" +
       "<tr>" + celda("Costo del servicio", x.costo_servicio ? fmtMoneda(x.costo_servicio) : "") + celda("Cotización / factura", esc(x.doc_servicio)) +
         celda("Horas-hombre", o.horas_hombre ? esc(o.horas_hombre) : "") + celda("Refacciones", r.costo_refacciones ? fmtMoneda(r.costo_refacciones) : "") + "</tr></table>" +
+      ((x.costos || []).length ? "<h2>DESGLOSE DE COSTOS DEL SERVICIO</h2>" + htmlCostosOT(x).replace("otd-tabla", "") : "") +
       "<h2>1. PERMISO DE TRABAJO" + (x.permiso ? " — autorizó " + esc(x.permiso.nombre_autorizo) + " " + esc(x.permiso.fecha) + " " + esc(x.permiso.hora) +
         (x.permiso.riesgos.length ? " · riesgos: " + esc(x.permiso.riesgos.join(", ")) : "") : "") + "</h2><table>" + permiso + "</table>" +
       "<h2>2. CHECKLIST DE TRABAJOS" + (x.plantilla ? " — " + esc(x.plantilla) : "") + "</h2><table><tr><th style='width:6%'>#</th><th>Punto</th><th style='width:10%'>Resultado</th><th style='width:38%'>Observación / evidencia</th></tr>" + check + extra + "</table>" +
@@ -3817,6 +3863,7 @@ const App = (() => {
       "<div style='display:grid;grid-template-columns:repeat(2,1fr);gap:8px;'>" +
         tile(i.ots, "órdenes de trabajo") + tile(i.horas_paro + " h", "tiempo parado") +
         tile(fmtMoneda(i.costo_refacciones), "en refacciones") + tile(i.horas_hombre + " h", "horas-hombre") +
+        (i.costo_servicios ? tile(fmtMoneda(i.costo_servicios), "en servicios externos") : "") +
         tile(i.mtbf_dias ? i.mtbf_dias + " d" : "—", "entre fallas (MTBF)") + tile(i.mttr_horas ? i.mttr_horas + " h" : "—", "para reparar (MTTR)") +
       "</div>" +
       (causas.length ? "<h3>Causas más frecuentes</h3>" + causas.map(c => "<div class='sub'>" + esc(c) + ": <b>" + i.causas[c] + "</b></div>").join("") : "") +
