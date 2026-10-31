@@ -222,6 +222,10 @@ const App = (() => {
     addEvent("btn-ots", "click", () => verOTs(usuarioActual.rol === "tecnico" ? "mias" : "abiertas"));
     addEvent("btn-ots-nueva", "click", () => abrirNuevaOT());
     addEvent("btn-otn-scan", "click", escanearEquipoOT);
+    addEvent("btn-ot-externa", "click", abrirOTExterna);
+    addEvent("btn-ots-externa", "click", abrirOTExterna);
+    addEvent("btn-ote-guardar", "click", guardarOTExterna);
+    addEvent("btn-ote-cancelar", "click", () => verOTs());
     addEvent("btn-otn-guardar", "click", guardarNuevaOT);
     addEvent("btn-otn-cancelar", "click", () => verOTs());
     addEvent("otn-parado-si", "click", () => elegirParado("SI"));
@@ -270,6 +274,7 @@ const App = (() => {
       ocultar("btn-usuarios"); ocultar("btn-config");
       ocultar("btn-revisar"); ocultar("btn-conteos"); ocultar("btn-etiquetas");
       ocultar("btn-proveedores"); ocultar("btn-ubicaciones"); ocultar("btn-reconstruir");
+      ocultar("btn-ot-externa"); ocultar("btn-ots-externa");
     } else if (rol === "supervisor" || rol === "gerencia") {
       ocultar("btn-reconstruir"); ocultar("btn-usuarios"); ocultar("btn-config");
     }
@@ -285,7 +290,7 @@ const App = (() => {
       "view-equipos", "view-equipo-form", "view-usuarios", "view-usuario-form",
       "view-password", "view-config",
       "view-conteo", "view-pieza-nueva", "view-alta-ok", "view-revisar", "view-conteos", "view-etiquetas",
-      "view-ots", "view-ot-nueva", "view-ot-detalle", "view-equipo-hist",
+      "view-ots", "view-ot-nueva", "view-ot-externa", "view-ot-detalle", "view-equipo-hist",
       "view-loading"
     ].forEach(v => {
       const el = document.getElementById(v);
@@ -3028,7 +3033,9 @@ const App = (() => {
       "<div style='display:flex;justify-content:space-between;gap:8px;align-items:center;'>" +
         "<span class='cod'>" + esc(o.id_ot) + "</span>" + chipEstado(o.estado) + "</div>" +
       (o.paro_abierto ? "<div style='color:#b91c1c;font-weight:800;margin-top:4px;'>⛔ EQUIPO PARADO · " + esc(duracion(o.minutos_paro)) + "</div>" : "") +
-      "<div style='margin-top:4px;'><b>" + esc(o.equipo) + "</b> · " + esc(o.nombre_equipo) + "</div>" +
+      (o.origen === "EXTERNO"
+        ? "<div style='margin-top:4px;'>🔧 <b>" + esc(o.proveedor) + "</b> · " + esc(o.area || o.nombre_equipo || o.equipo) + "</div>"
+        : "<div style='margin-top:4px;'><b>" + esc(o.equipo) + "</b> · " + esc(o.nombre_equipo) + "</div>") +
       "<div class='sub'>" + esc(o.descripcion_falla) + "</div>" +
       "<div class='sub'>" + esc(o.prioridad) + " · " + esc(o.tipo) + " · " +
         (o.nombre_asignado ? "👷 " + esc(o.nombre_asignado) : "Sin asignar") + " · " +
@@ -3159,11 +3166,11 @@ const App = (() => {
         "<h2 style='margin:0;'>" + esc(o.id_ot) + "</h2>" + chipEstado(o.estado) + "</div>" +
       (o.paro_abierto ? "<div class='aviso' style='background:#fee2e2;color:#991b1b;font-weight:800;'>⛔ EQUIPO PARADO desde hace " + esc(duracion(o.minutos_paro)) + "</div>" : "") +
       "<div class='tarjeta-conteo' style='border-color:" + (COLOR_PRIORIDAD[o.prioridad] || "#1e3a5f") + "'>" +
-        "<div class='conteo-codigo' style='font-size:18px;'>" + esc(o.equipo) + " · " + esc(o.nombre_equipo) + "</div>" +
+        "<div class='conteo-codigo' style='font-size:18px;'>" + (r.externa ? "🔧 Servicio externo · " + esc(r.externa.area || o.equipo) : esc(o.equipo) + " · " + esc(o.nombre_equipo)) + "</div>" +
         "<div class='conteo-desc'>" + esc(o.descripcion_falla) + "</div>" +
         filaDato("Prioridad", "<b style='color:" + (COLOR_PRIORIDAD[o.prioridad] || "") + "'>" + esc(o.prioridad) + "</b> · " + esc(o.tipo)) +
-        filaDato("Reportó", esc(o.nombre_solicitante || o.solicitante) + " · " + esc(o.fecha) + " " + esc(o.hora)) +
-        filaDato("Técnico", o.nombre_asignado ? "👷 " + esc(o.nombre_asignado) : "<i>Sin asignar</i>") +
+        filaDato(r.externa ? "Creó" : "Reportó", esc(o.nombre_solicitante || o.solicitante) + " · " + esc(o.fecha) + " " + esc(o.hora)) +
+        filaDato(r.externa ? "Acompaña" : "Técnico", o.nombre_asignado ? "👷 " + esc(o.nombre_asignado) : "<i>Sin asignar</i>") +
         (o.minutos_trabajo ? filaDato("Tiempo trabajo", esc(duracion(o.minutos_trabajo))) : "") +
         (o.equipo_parado === "SI" && !o.paro_abierto ? filaDato("Tiempo parado", esc(duracion(o.minutos_paro))) : "") +
         (o.trabajo_realizado ? filaDato("Trabajo", esc(o.trabajo_realizado)) : "") +
@@ -3172,6 +3179,11 @@ const App = (() => {
         (o.motivo_cancelacion ? filaDato("Cancelada", esc(o.motivo_cancelacion)) : "") +
         (o.notas_cierre ? filaDato("Cierre", esc(o.notas_cierre)) : "") +
       "</div>";
+
+    if (r.externa) {
+      r.puede_externa = { checklist: o.estado === "EN_PROCESO" && (p.terminar) };
+      html += htmlExterna(r);
+    }
 
     // Material
     html += "<h3>Material " + (r.materiales.length ? "<span class='ayuda'>(" + fmtMoneda(r.costo_refacciones) + ")</span>" : "") + "</h3>";
@@ -3187,6 +3199,7 @@ const App = (() => {
       "<div class='sub'>" + esc(b.fecha) + " " + esc(b.hora) + " · " + esc(b.nombre || b.usuario) + "</div>" +
       "<div><b>" + esc(b.evento.replace("_", " ")) + "</b>" + (b.detalle ? " — " + esc(b.detalle) : "") + "</div></div>").join("");
     cont.innerHTML = html;
+    if (r.externa) activarExterna(r);
 
     // Acciones según estado y rol
     const acc = document.getElementById("ot-acciones");
@@ -3198,13 +3211,18 @@ const App = (() => {
       b.onclick = fn;
       acc.appendChild(b);
     };
-    if (p.iniciar) boton(o.estado === "SOLICITADA" ? "✋ Tomar y empezar" : "▶️ Empezar trabajo", () => accionOT("iniciar_ot", {}, "OT iniciada"));
+    const x = r.externa;
+    const opera = p.terminar || (p.iniciar && o.estado === "ASIGNADA");
+    if (x && !x.permiso && opera) boton("📋 Llenar permiso de trabajo", formPermisoOT);
+    if (x && o.estado === "EN_PROCESO" && p.terminar && x.checklist_completo && !x.liberacion) boton("✅ Liberación de higiene", formLiberarOT);
+    if (x && p.asignar && o.estado !== "CANCELADA") boton("💲 Costo / factura / técnicos", formDatosServicioOT, "btn-secundario");
+    if (p.iniciar && !(x && !x.permiso)) boton(o.estado === "SOLICITADA" ? "✋ Tomar y empezar" : "▶️ Empezar trabajo", () => accionOT("iniciar_ot", {}, "OT iniciada"));
     if (p.material) {
       boton("➖ Sacar material para esta OT", () => abrirMovimiento("SALIDA", { ot: o.id_ot, equipo: o.equipo }));
       if (r.materiales.length) boton("↩️ Devolver material sobrante", () => abrirMovimiento("DEVOLUCION", { ot: o.id_ot, equipo: o.equipo }), "btn-secundario");
     }
     if (p.equipo_opera) boton("✅ El equipo ya funciona", () => { if (confirm("¿El equipo ya está operando?")) accionOT("equipo_opera_ot", {}, ""); }, "btn-secundario");
-    if (p.terminar) boton("🏁 Terminar OT", formTerminarOT);
+    if (p.terminar && (!x || x.liberacion)) boton("🏁 Terminar OT", formTerminarOT);
     if (p.asignar && ["SOLICITADA", "ASIGNADA", "EN_PROCESO"].includes(o.estado)) boton(o.nombre_asignado ? "👷 Reasignar / prioridad" : "👷 Asignar técnico", formAsignarOT, "btn-secundario");
     if (p.cerrar) {
       boton("🔒 Revisada: cerrar OT", () => { const n = prompt("Notas de cierre (opcional):", ""); if (n !== null) accionOT("cerrar_ot", { notas: n }, "OT cerrada"); });
@@ -3217,6 +3235,7 @@ const App = (() => {
 
   // Formato de OT para imprimir o guardar como PDF (hoja carta)
   async function imprimirOT() {
+    if (otVista.actual.externa) return imprimirOTExterna();
     const r = otVista.actual, o = r.ot;
     const w = window.open("", "_blank");
     if (!w) return alert("Permite las ventanas emergentes de este sitio para imprimir.");
@@ -3328,6 +3347,7 @@ const App = (() => {
     document.getElementById("otf-guardar").onclick = async () => {
       const b = document.getElementById("otf-guardar");
       b.disabled = true;
+      msg(document.getElementById("ot-status"), "");
       try { await alGuardar(document.getElementById("otf-status")); } finally { b.disabled = false; }
     };
     acc.scrollIntoView({ behavior: "smooth" });
@@ -3378,6 +3398,360 @@ const App = (() => {
         vibrar(120);
         verDetalleOT(o.id_ot);
       });
+    if (r.externa) document.getElementById("otf-causa").value = "NO APLICA (PREVENTIVO / SERVICIO)";
+  }
+
+  // ─── OT de servicio externo (proveedor en planta) ───
+
+  const ote = { plantillas: null, permisoBase: [], riesgos: [], liberacion: [], equipos: [], sel: new Set() };
+  const RES_TXT = { OK: "✅ OK", NO_OK: "❌ No OK", NA: "➖ N/A" };
+  const NOMBRE_RIESGO = { ELECTRICO: "⚡ Eléctrico", ALTURA: "🪜 Altura", CALIENTE: "🔥 Trabajo en caliente", QUIMICOS: "🧪 Químicos", ESPACIO_CONFINADO: "🕳️ Espacio confinado" };
+
+  function hoyISO() {
+    const d = new Date(), p = n => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+
+  async function cargarPlantillasOT() {
+    if (ote.plantillas) return;
+    const r = await api("listar_plantillas_ot");
+    if (!r.ok) throw new Error(r.error);
+    ote.plantillas = r.plantillas; ote.permisoBase = r.permiso_base; ote.riesgos = r.riesgos; ote.liberacion = r.liberacion;
+  }
+
+  async function abrirOTExterna() {
+    const $ = id => document.getElementById(id);
+    mostrarVista("view-loading");
+    $("loading-text").textContent = "Preparando servicio externo...";
+    try {
+      await cargarCatalogos();
+      ote.plantillas = null;
+      await cargarPlantillasOT();
+      if (!otVista.asignables) { const a = await api("listar_asignables"); otVista.asignables = a.ok ? a.usuarios : []; }
+      const pr = await api("listar_proveedores");
+      $("ote-proveedores").innerHTML = (pr.ok ? pr.proveedores : []).map(p => "<option value='" + esc(p.razon_social) + "'>").join("");
+    } catch (e) { alert("Error: " + e.message); return volverAlMenu(); }
+    ["ote-proveedor", "ote-tecnicos", "ote-desc", "ote-area", "ote-eq-buscar", "ote-costo", "ote-doc", "ote-nombre-pl"].forEach(id => { $(id).value = ""; });
+    $("ote-fecha").value = hoyISO(); $("ote-fecha").max = hoyISO();
+    $("ote-tipo").value = "PREVENTIVO"; $("ote-prioridad").value = "MEDIA";
+    llenarSelect($("ote-acompanante"), otVista.asignables, u => u.usuario, u => u.nombre + " (" + u.rol + ")", "Elige quién acompaña...");
+    $("ote-acompanante").value = otVista.asignables.some(u => u.usuario === usuarioActual.user) ? usuarioActual.user : "";
+    llenarSelect($("ote-plantilla"), ote.plantillas, p => p.nombre, p => p.nombre + " (" + p.puntos.length + " puntos)", "— Sin plantilla: escribo los puntos —");
+    $("ote-plantilla").onchange = () => {
+      const p = ote.plantillas.find(x => x.nombre === $("ote-plantilla").value);
+      $("ote-puntos").value = p ? p.puntos.join("\n") : "";
+    };
+    $("ote-puntos").value = "";
+    $("ote-guardar-pl").checked = false; $("ote-nombre-pl").classList.add("hidden");
+    $("ote-guardar-pl").onchange = () => $("ote-nombre-pl").classList.toggle("hidden", !$("ote-guardar-pl").checked);
+    ote.equipos = (cache.catalogos.equipos || []).filter(e => e.activo !== false);
+    ote.sel = new Set();
+    $("ote-eq-buscar").oninput = pintarEquiposOTE;
+    pintarEquiposOTE();
+    msg($("ote-status"), "");
+    mostrarVista("view-ot-externa");
+    window.scrollTo(0, 0);
+  }
+
+  function pintarEquiposOTE() {
+    const q = normalizar(document.getElementById("ote-eq-buscar").value);
+    const cont = document.getElementById("ote-equipos");
+    const lista = ote.equipos.filter(e => !q || normalizar(e.codigo + " " + e.nombre + " " + (e.area || "")).includes(q) || ote.sel.has(e.codigo));
+    cont.innerHTML = lista.length ? "" : "<p class='ayuda'>No hay equipos con ese filtro. Dalos de alta en 🏭 Equipos.</p>";
+    lista.slice(0, 150).forEach(e => {
+      const l = document.createElement("label");
+      l.className = "check-fila ote-eq";
+      l.innerHTML = "<input type='checkbox'" + (ote.sel.has(e.codigo) ? " checked" : "") + "> <b>" + esc(e.codigo) + "</b> " + esc(e.nombre);
+      l.querySelector("input").onchange = ev => { if (ev.target.checked) ote.sel.add(e.codigo); else ote.sel.delete(e.codigo); contarEquiposOTE(); };
+      cont.appendChild(l);
+    });
+    contarEquiposOTE();
+  }
+  function contarEquiposOTE() { document.getElementById("ote-eq-cuenta").textContent = ote.sel.size ? "(" + ote.sel.size + " elegidos)" : ""; }
+
+  async function guardarOTExterna() {
+    const $ = id => document.getElementById(id);
+    const st = $("ote-status");
+    const body = {
+      proveedor: $("ote-proveedor").value.trim(), tecnicos: $("ote-tecnicos").value.trim(),
+      acompanante: $("ote-acompanante").value, fecha_servicio: $("ote-fecha").value,
+      tipo: $("ote-tipo").value, prioridad: $("ote-prioridad").value,
+      descripcion: $("ote-desc").value.trim(), area: $("ote-area").value.trim(), equipos: Array.from(ote.sel),
+      plantilla: $("ote-plantilla").value,
+      puntos: $("ote-puntos").value.split("\n").map(s => s.replace(/^[-•*\d.)\s]+/, "").trim()).filter(Boolean),
+      costo_servicio: $("ote-costo").value, doc_servicio: $("ote-doc").value.trim()
+    };
+    if ($("ote-guardar-pl").checked) body.guardar_plantilla = $("ote-nombre-pl").value.trim();
+    if (!body.proveedor) return msg(st, "❌ Escribe la empresa / proveedor", "error");
+    if (!body.acompanante) return msg(st, "❌ Elige quién lo acompaña", "error");
+    if (body.descripcion.length < 10) return msg(st, "❌ Describe el alcance del servicio", "error");
+    if (!body.equipos.length && !body.area) return msg(st, "❌ Elige equipos o escribe el área", "error");
+    if (!body.puntos.length) return msg(st, "❌ El checklist necesita al menos un punto", "error");
+    if ($("ote-guardar-pl").checked && !body.guardar_plantilla) return msg(st, "❌ Ponle nombre a la plantilla", "error");
+    const btn = $("btn-ote-guardar");
+    btn.disabled = true; msg(st, "Creando...");
+    try {
+      const r = await api("crear_ot_externa", body, "POST");
+      if (!r.ok) return msg(st, "❌ " + r.error, "error");
+      if (body.guardar_plantilla) ote.plantillas = null;
+      vibrar(100);
+      verDetalleOT(r.id_ot);
+    } finally { btn.disabled = false; }
+  }
+
+  // Secciones extra del detalle (datos del proveedor, permiso, checklist, liberación)
+  function htmlExterna(r) {
+    const x = r.externa, o = r.ot;
+    const eqs = x.equipos_det.map(e => "<b>" + esc(e.codigo) + "</b> " + esc(e.nombre)).join("<br>");
+    const marcados = x.checklist.filter(p => p.res).length;
+    let h = "<div class='tarjeta-conteo ote-card'>" +
+      "<div class='conteo-codigo' style='font-size:17px;'>🔧 " + esc(x.proveedor) + "</div>" +
+      filaDato("Técnicos", esc(x.tecnicos_externos)) + filaDato("Acompaña", "👷 " + esc(o.nombre_asignado)) +
+      filaDato("Fecha servicio", esc(x.fecha_servicio)) + filaDato("Área", esc(x.area)) + filaDato("Equipos", eqs) +
+      filaDato("Costo servicio", x.costo_servicio ? fmtMoneda(x.costo_servicio) : "") + filaDato("Cotiz./factura", esc(x.doc_servicio)) +
+      "</div>";
+    // 1. Permiso
+    h += "<h3>1. Permiso de trabajo " + (x.permiso ? "<span class='ote-ok'>✅ autorizado</span>" : "<span class='ote-pend'>pendiente</span>") + "</h3>";
+    h += x.permiso
+      ? "<p class='sub'>Autorizó " + esc(x.permiso.nombre_autorizo) + " · " + esc(x.permiso.fecha) + " " + esc(x.permiso.hora) +
+        (x.permiso.riesgos.length ? " · Riesgos: " + x.permiso.riesgos.map(k => esc(NOMBRE_RIESGO[k] || k)).join(", ") : "") +
+        "<br>Herramienta que entra: " + esc(x.permiso.herramienta) + "</p>"
+      : "<p class='ayuda'>Se llena antes de que empiecen: inducción, EPP, herramienta que entra, bloqueos.</p>";
+    // 2. Checklist
+    h += "<h3>2. Checklist <span class='ayuda'>(" + marcados + " de " + x.checklist.length + (x.hallazgos ? " · " + x.hallazgos + " hallazgo(s)" : "") + ")</span></h3>";
+    const editable = r.puede_externa.checklist;
+    h += "<div id='ote-check'>" + x.checklist.map(p => {
+      const otLink = p.ot_generada ? " · <a href='#' data-ot='" + esc(p.ot_generada) + "'>" + esc(p.ot_generada) + "</a>" : "";
+      return "<div class='ote-punto r-" + (p.res || "pend").toLowerCase() + "' data-n='" + p.n + "'>" +
+        "<div class='ote-punto-txt'><b>" + p.n + ".</b> " + esc(p.punto) + "</div>" +
+        (editable
+          ? "<div class='ote-res'>" + ["OK", "NO_OK", "NA"].map(k => "<button type='button' class='chip" + (p.res === k ? " activo" : "") + "' data-res='" + k + "'>" + RES_TXT[k] + "</button>").join("") +
+            "<label class='chip ote-foto'>📷<input type='file' accept='image/*' capture='environment' hidden></label></div>" +
+            "<input class='ote-obs' placeholder='Observación" + (p.res === "NO_OK" ? " (obligatoria)" : "") + "' value='" + esc(p.obs || "") + "'>"
+          : "<div class='sub'>" + (p.res ? RES_TXT[p.res] : "Sin marcar") + (p.obs ? " — " + esc(p.obs) : "") + "</div>") +
+        ((p.fotos || []).length ? "<div class='ote-fotos'>" + p.fotos.map(f => "<button type='button' class='chip' data-foto='" + esc(f) + "'>🖼️ foto</button>").join("") + "</div>" : "") +
+        (p.por ? "<div class='sub'>" + esc(p.por) + " · " + esc(p.cuando) + otLink + "</div>" : "") +
+        "</div>";
+    }).join("") + "</div>";
+    if (editable) h += "<button type='button' class='btn-secundario btn-ancho' id='ote-mas-punto'>+ Agregar punto</button>";
+    // 3. Liberación
+    h += "<h3>3. Liberación de higiene " + (x.liberacion ? "<span class='ote-ok'>✅ liberada</span>" : "<span class='ote-pend'>pendiente</span>") + "</h3>";
+    h += x.liberacion
+      ? "<p class='sub'>Recibe el área: <b>" + esc(x.liberacion.libero) + "</b> · registró " + esc(x.liberacion.registro) + " · " + esc(x.liberacion.fecha) + " " + esc(x.liberacion.hora) +
+        (x.liberacion.notas ? "<br>" + esc(x.liberacion.notas) : "") + "</p>"
+      : "<p class='ayuda'>Al terminar: herramienta contada, sin residuos, área limpia, guardas puestas. Sin esto no se puede terminar la OT.</p>";
+    return h;
+  }
+
+  function activarExterna(r) {
+    const cont = document.getElementById("ot-detalle");
+    const id = r.ot.id_ot;
+    cont.querySelectorAll("[data-ot]").forEach(a => { a.onclick = ev => { ev.preventDefault(); verDetalleOT(a.dataset.ot); }; });
+    cont.querySelectorAll("[data-foto]").forEach(b => { b.onclick = () => verFotoOT(b.dataset.foto); });
+    if (!r.puede_externa.checklist) return;
+    cont.querySelectorAll(".ote-punto").forEach(div => {
+      const n = Number(div.dataset.n);
+      const obs = div.querySelector(".ote-obs");
+      div.querySelectorAll("[data-res]").forEach(b => {
+        b.onclick = async () => {
+          const res = b.dataset.res;
+          let texto = obs.value.trim();
+          if (res === "NO_OK" && !texto) {
+            texto = prompt("¿Qué se encontró? (obligatorio en No OK)") || "";
+            if (!texto.trim()) return;
+          }
+          await guardarPuntoOT(id, { n: n, res: res, obs: texto }, res === "NO_OK");
+        };
+      });
+      obs.onchange = () => {
+        const p = r.externa.checklist.find(q => q.n === n);
+        if (p && p.res) guardarPuntoOT(id, { n: n, obs: obs.value.trim() });
+      };
+      div.querySelector(".ote-foto input").onchange = async ev => {
+        const f = ev.target.files[0];
+        if (!f) return;
+        msg(document.getElementById("ot-status"), "Subiendo foto...");
+        try { await guardarPuntoOT(id, { n: n, foto_base64: await comprimirFoto(f) }); }
+        catch (e) { alert("No se pudo leer la foto: " + e.message); }
+      };
+    });
+    const mas = document.getElementById("ote-mas-punto");
+    if (mas) mas.onclick = async () => {
+      const t = prompt("Nuevo punto del checklist:");
+      if (t && t.trim()) await guardarPuntoOT(id, { nuevo_punto: t.trim() });
+    };
+  }
+
+  async function guardarPuntoOT(id, datos, ofrecerCorrectiva) {
+    const st = document.getElementById("ot-status");
+    const r = await api("checklist_ot", Object.assign({ id_ot: id }, datos), "POST");
+    if (!r.ok) return alert("Error: " + r.error);
+    msg(st, r.completo ? "✅ Checklist completo. Sigue la liberación de higiene." : "✅ Guardado", "ok");
+    if (ofrecerCorrectiva && confirm("¿Abrir una OT correctiva para este hallazgo?")) {
+      const actual = otVista.actual;
+      const p = r.checklist.find(q => q.n === datos.n);
+      const eqs = actual.externa.equipos_det;
+      let equipo = eqs.length === 1 ? eqs[0].codigo : "";
+      if (!equipo) {
+        const lista = (eqs.length ? eqs : (cache.catalogos.equipos || [])).map(e => e.codigo);
+        equipo = normalizar(prompt("¿En qué equipo? Escribe el código:\n" + lista.slice(0, 30).join(", "), lista[0] || "") || "");
+      }
+      if (equipo) {
+        const c = await api("crear_ot", { equipo: equipo, descripcion_falla: "Hallazgo de " + id + " (" + actual.externa.proveedor + "): " + p.punto + " — " + p.obs, tipo: "CORRECTIVO" }, "POST");
+        if (!c.ok) alert("No se creó la OT correctiva: " + c.error);
+        else { await api("checklist_ot", { id_ot: id, n: datos.n, ot_generada: c.id_ot }, "POST"); alert("✅ Se abrió " + c.id_ot); }
+      }
+    }
+    const y = window.scrollY;
+    await verDetalleOT(id);
+    window.scrollTo(0, y);
+  }
+
+  function comprimirFoto(file) {
+    return new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 1280, k = Math.min(1, max / Math.max(img.width, img.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(img.src);
+        res(cv.toDataURL("image/jpeg", 0.75));
+      };
+      img.onerror = () => rej(new Error("formato no válido"));
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  async function verFotoOT(nombre) {
+    const w = window.open("", "_blank");
+    if (!w) return alert("Permite las ventanas emergentes para ver la foto.");
+    w.document.write("<p style='font-family:Arial'>Cargando foto...</p>");
+    const r = await api("foto_ot", { nombre: nombre });
+    w.document.body.innerHTML = r.ok ? "<img style='max-width:100%' src='data:image/jpeg;base64," + r.base64 + "'>" : "<p>❌ " + esc(r.error) + "</p>";
+  }
+
+  async function formPermisoOT() {
+    try { await cargarPlantillasOT(); } catch (e) { return alert("Error: " + e.message); }
+    const chk = (k, t) => "<label class='check-fila ote-chk'><input type='checkbox' data-k='" + k + "'> " + esc(t) + "</label>";
+    formEnAcciones(
+      "<h3 style='margin-top:0'>📋 Permiso de trabajo</h3>" +
+      "<label>Riesgos del trabajo</label><div class='chips' id='otp-riesgos'>" +
+        ote.riesgos.map(x => "<button type='button' class='chip' data-r='" + x.clave + "'>" + esc(NOMBRE_RIESGO[x.clave] || x.clave) + "</button>").join("") + "</div>" +
+      "<label>Confirmar antes de empezar</label><div id='otp-puntos'></div>" +
+      "<label>Herramienta y material que entra *</label><textarea id='otp-herr' rows='3' placeholder='Ej. 2 desarmadores, pinzas, multímetro, aspiradora, 1 rollo de cinta'></textarea>" +
+      "<label>Notas</label><input id='otp-notas' />",
+      async st => {
+        const puntos = {};
+        document.querySelectorAll("#otp-puntos input").forEach(i => { puntos[i.dataset.k] = i.checked; });
+        const riesgos = Array.from(document.querySelectorAll("#otp-riesgos .activo")).map(b => b.dataset.r);
+        const r = await api("guardar_permiso_ot", { id_ot: otVista.actual.ot.id_ot, riesgos: riesgos, puntos: puntos,
+          herramienta: document.getElementById("otp-herr").value.trim(), notas: document.getElementById("otp-notas").value.trim() }, "POST");
+        if (!r.ok) return msg(st, "❌ " + r.error, "error");
+        verDetalleOT(otVista.actual.ot.id_ot);
+      });
+    const pintar = () => {
+      const marc = {};
+      document.querySelectorAll("#otp-puntos input").forEach(i => { marc[i.dataset.k] = i.checked; });
+      const activos = Array.from(document.querySelectorAll("#otp-riesgos .activo")).map(b => b.dataset.r);
+      const lista = ote.permisoBase.concat(...ote.riesgos.filter(x => activos.includes(x.clave)).map(x => x.puntos));
+      document.getElementById("otp-puntos").innerHTML = lista.map(p => chk(p.clave, p.texto)).join("");
+      document.querySelectorAll("#otp-puntos input").forEach(i => { i.checked = !!marc[i.dataset.k]; });
+    };
+    document.querySelectorAll("#otp-riesgos .chip").forEach(b => { b.onclick = () => { b.classList.toggle("activo"); pintar(); }; });
+    pintar();
+  }
+
+  async function formLiberarOT() {
+    try { await cargarPlantillasOT(); } catch (e) { return alert("Error: " + e.message); }
+    const herr = otVista.actual.externa.permiso ? otVista.actual.externa.permiso.herramienta : "";
+    formEnAcciones(
+      "<h3 style='margin-top:0'>✅ Liberación de higiene del área</h3>" +
+      (herr ? "<p class='ayuda'>Herramienta que entró: <b>" + esc(herr) + "</b></p>" : "") +
+      "<div id='otl-puntos'>" + ote.liberacion.map(p => "<label class='check-fila ote-chk'><input type='checkbox' data-k='" + p.clave + "'> " + esc(p.texto) + "</label>").join("") + "</div>" +
+      "<label>Recibe el área (Calidad / Producción) *</label><input id='otl-libero' placeholder='Nombre de quien revisa y recibe' />" +
+      "<label>Notas</label><input id='otl-notas' />",
+      async st => {
+        const puntos = {};
+        document.querySelectorAll("#otl-puntos input").forEach(i => { puntos[i.dataset.k] = i.checked; });
+        const r = await api("liberar_ot", { id_ot: otVista.actual.ot.id_ot, puntos: puntos,
+          libero: document.getElementById("otl-libero").value.trim(), notas: document.getElementById("otl-notas").value.trim() }, "POST");
+        if (!r.ok) return msg(st, "❌ " + r.error, "error");
+        verDetalleOT(otVista.actual.ot.id_ot);
+      });
+  }
+
+  function formDatosServicioOT() {
+    const x = otVista.actual.externa;
+    formEnAcciones(
+      "<h3 style='margin-top:0'>💲 Datos del servicio</h3>" +
+      "<label>Técnicos del proveedor</label><input id='otd-tec' value='" + esc(x.tecnicos_externos) + "' />" +
+      "<label>Costo del servicio (MXN, sin IVA)</label><input id='otd-costo' type='number' min='0' step='0.01' value='" + esc(x.costo_servicio || "") + "' />" +
+      "<label>Cotización / factura</label><input id='otd-doc' value='" + esc(x.doc_servicio) + "' />",
+      async st => {
+        const r = await api("editar_ot_externa", { id_ot: otVista.actual.ot.id_ot, tecnicos: document.getElementById("otd-tec").value,
+          costo_servicio: document.getElementById("otd-costo").value || 0, doc_servicio: document.getElementById("otd-doc").value }, "POST");
+        if (!r.ok) return msg(st, "❌ " + r.error, "error");
+        verDetalleOT(otVista.actual.ot.id_ot);
+      });
+  }
+
+  // Reporte imprimible para el expediente BRC (contratistas)
+  async function imprimirOTExterna() {
+    const r = otVista.actual, o = r.ot, x = r.externa;
+    const w = window.open("", "_blank");
+    if (!w) return alert("Permite las ventanas emergentes de este sitio para imprimir.");
+    w.document.write("<p style='font-family:Arial'>Preparando reporte...</p>");
+    let logo = "";
+    try { const c = await api("config"); if (c.ok && c.config && c.config.LOGO_URL) logo = String(c.config.LOGO_URL); } catch (e) {}
+    const fotos = {};
+    const nombres = [].concat(...x.checklist.map(p => p.fotos || []));
+    await Promise.all(nombres.map(async n => { const f = await api("foto_ot", { nombre: n }); if (f.ok) fotos[n] = f.base64; }));
+    const celda = (etq, val, ancho) => "<td" + (ancho ? " colspan='" + ancho + "'" : "") + "><div class='etq'>" + esc(etq) + "</div><div class='val'>" + (val || "&nbsp;") + "</div></td>";
+    const si = v => v ? "☒ Sí" : "☐ Sí";
+    const permiso = x.permiso
+      ? x.permiso.puntos.map(p => "<tr><td>" + esc(p.texto) + "</td><td class='c'>" + si(p.ok) + "</td></tr>").join("") +
+        "<tr><td colspan='2'><div class='etq'>Herramienta y material que entra</div>" + esc(x.permiso.herramienta) + "</td></tr>"
+      : "<tr><td colspan='2'><i>Sin permiso registrado</i></td></tr>";
+    const check = x.checklist.map(p => "<tr><td class='c'>" + p.n + "</td><td>" + esc(p.punto) + "</td><td class='c " + (p.res === "NO_OK" ? "mal" : "") + "'>" +
+      (p.res === "OK" ? "OK" : p.res === "NO_OK" ? "NO OK" : p.res === "NA" ? "N/A" : "") + "</td><td>" + esc(p.obs || "") +
+      (p.ot_generada ? "<br><b>OT " + esc(p.ot_generada) + "</b>" : "") +
+      ((p.fotos || []).filter(f => fotos[f]).map(f => "<img src='data:image/jpeg;base64," + fotos[f] + "'>").join("")) + "</td></tr>").join("");
+    const lib = x.liberacion
+      ? x.liberacion.puntos.map(p => "<tr><td>" + esc(p.texto) + "</td><td class='c'>" + si(p.ok) + "</td></tr>").join("") +
+        "<tr><td colspan='2'>Recibe el área: <b>" + esc(x.liberacion.libero) + "</b> · " + esc(x.liberacion.fecha) + " " + esc(x.liberacion.hora) + (x.liberacion.notas ? " · " + esc(x.liberacion.notas) : "") + "</td></tr>"
+      : "<tr><td colspan='2'><i>Pendiente</i></td></tr>";
+    const bit = r.bitacora.map(b => "<tr><td>" + esc(b.fecha) + " " + esc(b.hora) + "</td><td>" + esc(b.nombre || b.usuario) + "</td><td><b>" + esc(String(b.evento).replace("_", " ")) + "</b>" + (b.detalle ? " — " + esc(b.detalle) : "") + "</td></tr>").join("");
+    w.document.open();
+    w.document.write("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>" + esc(o.id_ot) + " servicio externo</title><style>" +
+      "@page{size:letter;margin:12mm} *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;font-size:9.5pt;color:#000;margin:0}" +
+      ".barra{padding:10px;background:#f1f5f9;font-size:14px} .barra button{font-size:16px;padding:8px 16px;margin-right:8px} .hoja{padding:6mm}" +
+      ".enc{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #1e3a5f;padding-bottom:6px;margin-bottom:8px}" +
+      ".enc h1{font-size:14pt;margin:0;color:#1e3a5f} .sub{font-size:9pt;color:#444} .folio{text-align:right} .folio b{font-size:15pt} .logo{max-height:14mm;max-width:40mm;margin-right:10px} .izq{display:flex;align-items:center}" +
+      "table{width:100%;border-collapse:collapse;margin-bottom:6px} td,th{border:1px solid #888;padding:3px 5px;vertical-align:top} th{background:#e5e7eb;text-align:left;font-size:8.5pt}" +
+      ".etq{font-size:7pt;color:#555;text-transform:uppercase} .val{min-height:11pt} .c{text-align:center;white-space:nowrap} .mal{color:#b91c1c;font-weight:bold}" +
+      "h2{font-size:10pt;background:#1e3a5f;color:#fff;padding:3px 6px;margin:8px 0 4px;-webkit-print-color-adjust:exact;print-color-adjust:exact} img{max-width:45mm;max-height:35mm;margin:3px 3px 0 0;border:1px solid #ccc}" +
+      ".firmas{display:flex;gap:6mm;margin-top:14mm} .firma{flex:1;text-align:center;border-top:1px solid #000;padding-top:3px;font-size:8.5pt} .pie{margin-top:5mm;font-size:7pt;color:#666;text-align:right}" +
+      "tr{break-inside:avoid} @media print{.barra{display:none} .hoja{padding:0}}</style></head><body>" +
+      "<div class='barra'><button onclick='window.print()'>🖨️ Imprimir / Guardar PDF</button>Papel carta</div><div class='hoja'>" +
+      "<div class='enc'><div class='izq'>" + (logo ? "<img class='logo' src='" + esc(logo) + "' alt=''>" : "") +
+        "<div><h1>ORDEN DE SERVICIO EXTERNO</h1><div class='sub'>Mantenimiento Mediese · Control de contratistas</div></div></div>" +
+        "<div class='folio'><b>" + esc(o.id_ot) + "</b><div class='sub'>Estado: " + esc((ESTADO_OT[o.estado] || {}).txt || o.estado) + "</div></div></div>" +
+      "<table><tr>" + celda("Proveedor", "<b>" + esc(x.proveedor) + "</b>", 2) + celda("Fecha del servicio", esc(x.fecha_servicio)) + celda("Tipo", esc(o.tipo)) + "</tr>" +
+      "<tr>" + celda("Técnicos del proveedor", esc(x.tecnicos_externos), 2) + celda("Acompaña", esc(o.nombre_asignado)) + celda("Creó", esc(o.nombre_solicitante || o.solicitante)) + "</tr>" +
+      "<tr>" + celda("Área", esc(x.area)) + celda("Equipos", x.equipos_det.map(e => esc(e.codigo) + " " + esc(e.nombre)).join("<br>"), 3) + "</tr>" +
+      "<tr>" + celda("Alcance", esc(o.descripcion_falla), 4) + "</tr>" +
+      "<tr>" + celda("Costo del servicio", x.costo_servicio ? fmtMoneda(x.costo_servicio) : "") + celda("Cotización / factura", esc(x.doc_servicio)) +
+        celda("Horas-hombre", o.horas_hombre ? esc(o.horas_hombre) : "") + celda("Refacciones", r.costo_refacciones ? fmtMoneda(r.costo_refacciones) : "") + "</tr></table>" +
+      "<h2>1. PERMISO DE TRABAJO" + (x.permiso ? " — autorizó " + esc(x.permiso.nombre_autorizo) + " " + esc(x.permiso.fecha) + " " + esc(x.permiso.hora) +
+        (x.permiso.riesgos.length ? " · riesgos: " + esc(x.permiso.riesgos.join(", ")) : "") : "") + "</h2><table>" + permiso + "</table>" +
+      "<h2>2. CHECKLIST DE TRABAJOS" + (x.plantilla ? " — " + esc(x.plantilla) : "") + "</h2><table><tr><th style='width:6%'>#</th><th>Punto</th><th style='width:10%'>Resultado</th><th style='width:38%'>Observación / evidencia</th></tr>" + check + "</table>" +
+      "<h2>3. LIBERACIÓN DE HIGIENE</h2><table>" + lib + "</table>" +
+      (bit ? "<h2>BITÁCORA</h2><table><tr><th style='width:20%'>Fecha</th><th style='width:18%'>Quién</th><th>Evento</th></tr>" + bit + "</table>" : "") +
+      "<div class='firmas'><div class='firma'>Proveedor<br>" + esc(String(x.tecnicos_externos).split(",")[0] || "") + "</div><div class='firma'>Acompañante<br>" + esc(o.nombre_asignado) + "</div>" +
+        "<div class='firma'>Jefe de mantenimiento</div><div class='firma'>Calidad / Inocuidad<br>" + esc(x.liberacion ? x.liberacion.libero : "") + "</div></div>" +
+      "<div class='pie'>Impreso " + new Date().toLocaleString("es-MX") + " por " + esc(usuarioActual.nombre || usuarioActual.user) + "</div></div></body></html>");
+    w.document.close();
   }
 
   // ─── Historial del equipo ───

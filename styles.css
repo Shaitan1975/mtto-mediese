@@ -425,3 +425,21 @@ input[disabled] {
 .grupo-tc { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 10px 12px; margin: 8px 0; }
 .grupo-tc input { font-size: 18px; font-weight: 700; }
 .ayuda-tc { font-size: 12px; color: #1e3a8a; margin: 6px 0 0; }
+
+/* ── OT de servicio externo ── */
+.check-fila { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; margin: 6px 0; cursor: pointer; }
+.check-fila input { width: auto; margin-top: 3px; flex: none; }
+.ote-equipos { max-height: 240px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 10px; padding: 4px 10px; background: #fff; margin-bottom: 8px; }
+.ote-eq { border-bottom: 1px solid #f1f5f9; padding: 4px 0; margin: 0; }
+.ote-card { border-color: #0f766e !important; }
+.ote-ok { color: #047857; font-size: 13px; font-weight: 700; }
+.ote-pend { color: #b45309; font-size: 13px; font-weight: 700; }
+.ote-punto { background: #fff; border: 1px solid #e2e8f0; border-left: 5px solid #cbd5e1; border-radius: 10px; padding: 10px; margin-bottom: 8px; }
+.ote-punto.r-ok { border-left-color: #16a34a; } .ote-punto.r-no_ok { border-left-color: #dc2626; background: #fef2f2; } .ote-punto.r-na { border-left-color: #94a3b8; }
+.ote-punto-txt { margin-bottom: 6px; }
+.ote-res { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.ote-res .chip { padding: 8px 12px; font-size: 14px; }
+.ote-obs { width: 100%; box-sizing: border-box; }
+.ote-foto { cursor: pointer; }
+.ote-fotos { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+.ote-chk { background: #f8fafc; border-radius: 8px; padding: 8px; }

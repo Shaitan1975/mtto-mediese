@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Mantenimiento Mediese</title>
-  <link rel="stylesheet" href="styles.css?v=20261024a" />
+  <link rel="stylesheet" href="styles.css?v=20261031a" />
   <link rel="icon" type="image/svg+xml" href="icono.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
@@ -65,6 +65,7 @@
         <button id="btn-conteo" class="destacado">📦 Contar inventario</button>
         <button id="btn-reportar">🚨 Reportar falla</button>
         <button id="btn-ots">🛠️ Órdenes de trabajo</button>
+        <button id="btn-ot-externa">🔧 Servicio externo</button>
         <button id="btn-salida">➖ Salida</button>
         <button id="btn-devolucion">↩️ Devolución</button>
         <button id="btn-stock">🔍 Ver stock</button>
@@ -759,6 +760,7 @@
       </div>
       <p id="ot-contadores" class="ayuda"></p>
       <button class="btn-primary btn-ancho" id="btn-ots-nueva">🚨 Reportar falla</button>
+      <button class="btn-secundario btn-ancho" id="btn-ots-externa">🔧 Servicio externo (proveedor)</button>
       <div id="lista-ots"></div>
       <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
     </section>
@@ -810,6 +812,66 @@
       </div>
     </section>
 
+    <section id="view-ot-externa" class="hidden">
+      <h2>🔧 Servicio externo</h2>
+      <p class="ayuda">Para proveedores que vienen a planta (limpieza de tableros, fumigación, calibraciones...). Lleva permiso de trabajo, checklist y liberación de higiene.</p>
+      <div class="form-grid">
+        <div class="form-grupo form-grupo-ancho">
+          <label>Empresa / proveedor *</label>
+          <input id="ote-proveedor" list="ote-proveedores" autocomplete="off" placeholder="Ej. ELECTRO SERVICIOS DEL CENTRO" />
+          <datalist id="ote-proveedores"></datalist>
+        </div>
+        <div class="form-grupo form-grupo-ancho">
+          <label>Técnicos del proveedor</label>
+          <input id="ote-tecnicos" placeholder="Nombres, separados por coma" />
+        </div>
+        <div class="form-grupo">
+          <label>Lo acompaña (responsable interno) *</label>
+          <select id="ote-acompanante"></select>
+        </div>
+        <div class="form-grupo">
+          <label>Fecha del servicio *</label>
+          <input id="ote-fecha" type="date" />
+        </div>
+        <div class="form-grupo">
+          <label>Tipo</label>
+          <select id="ote-tipo"><option>PREVENTIVO</option><option>CORRECTIVO</option><option>MEJORA</option></select>
+        </div>
+        <div class="form-grupo">
+          <label>Prioridad</label>
+          <select id="ote-prioridad"><option>MEDIA</option><option>ALTA</option><option>BAJA</option></select>
+        </div>
+      </div>
+      <label>¿Qué van a hacer? (alcance) *</label>
+      <textarea id="ote-desc" rows="3" placeholder="Ej. Limpieza y revisión de tableros eléctricos y de la seguridad de instalaciones (cables, conexiones)"></textarea>
+      <label>Área</label>
+      <input id="ote-area" placeholder="Ej. TABLEROS ELÉCTRICOS PLANTA (opcional si eliges equipos)" />
+      <label>Equipos <span class="ayuda" id="ote-eq-cuenta"></span></label>
+      <input id="ote-eq-buscar" placeholder="🔍 Filtrar equipos..." autocomplete="off" />
+      <div id="ote-equipos" class="ote-equipos"></div>
+      <label>Checklist de trabajos</label>
+      <select id="ote-plantilla"></select>
+      <textarea id="ote-puntos" rows="8" placeholder="Un punto por renglón"></textarea>
+      <p class="ayuda">Un punto por renglón. Puedes quitar o agregar renglones; también se pueden agregar puntos durante el servicio.</p>
+      <label class="check-fila"><input type="checkbox" id="ote-guardar-pl" /> Guardar esta lista como plantilla nueva</label>
+      <input id="ote-nombre-pl" class="hidden" placeholder="Nombre de la plantilla (ej. FUMIGACIÓN MENSUAL)" />
+      <div class="form-grid">
+        <div class="form-grupo">
+          <label>Costo del servicio (MXN, sin IVA)</label>
+          <input id="ote-costo" type="number" inputmode="decimal" min="0" step="0.01" />
+        </div>
+        <div class="form-grupo">
+          <label>Cotización / factura</label>
+          <input id="ote-doc" placeholder="Ej. COT-123 o factura A-456" />
+        </div>
+      </div>
+      <p id="ote-status" class="send-status"></p>
+      <div class="form-acciones">
+        <button class="btn-secundario" id="btn-ote-cancelar">Cancelar</button>
+        <button class="btn-primary" id="btn-ote-guardar">Crear OT de servicio</button>
+      </div>
+    </section>
+
     <section id="view-ot-detalle" class="hidden">
       <div id="ot-detalle"></div>
       <p id="ot-status" class="send-status"></p>
@@ -836,7 +898,7 @@
     <button id="scanner-cerrar">Cerrar</button>
   </div>
 
-  <script src="app.js?v=20261024a"></script>
+  <script src="app.js?v=20261031a"></script>
   <script>App.initApp();</script>
 </body>
 </html>
