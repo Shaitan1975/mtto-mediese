@@ -223,6 +223,7 @@ const App = (() => {
     addEvent("btn-ots-nueva", "click", () => abrirNuevaOT());
     addEvent("btn-otn-scan", "click", escanearEquipoOT);
     addEvent("btn-ot-externa", "click", abrirOTExterna);
+    addEvent("btn-ots-scan", "click", escanearOT);
     addEvent("btn-ots-externa", "click", abrirOTExterna);
     addEvent("btn-ote-guardar", "click", guardarOTExterna);
     addEvent("btn-ote-cancelar", "click", () => verOTs());
@@ -3180,6 +3181,10 @@ const App = (() => {
         (o.notas_cierre ? filaDato("Cierre", esc(o.notas_cierre)) : "") +
       "</div>";
 
+    if (["SOLICITADA", "ASIGNADA", "EN_PROCESO"].includes(o.estado) && usuarioActual.rol !== "produccion") {
+      html += "<div class='aviso-campo'><b>📄 ¿Sin acceso a la app en campo?</b> Imprime el formato, que lo llenen a mano y después se captura aquí (escanea su QR desde 🛠️ Órdenes de trabajo)." +
+        "<button type='button' class='btn-primary btn-ancho' id='btn-ot-formato'>🖨️ Imprimir formato para campo</button></div>";
+    }
     if (r.externa) {
       r.puede_externa = { checklist: o.estado === "EN_PROCESO" && (p.terminar) };
       html += htmlExterna(r);
@@ -3199,6 +3204,8 @@ const App = (() => {
       "<div class='sub'>" + esc(b.fecha) + " " + esc(b.hora) + " · " + esc(b.nombre || b.usuario) + "</div>" +
       "<div><b>" + esc(b.evento.replace("_", " ")) + "</b>" + (b.detalle ? " — " + esc(b.detalle) : "") + "</div></div>").join("");
     cont.innerHTML = html;
+    const bf = document.getElementById("btn-ot-formato");
+    if (bf) bf.onclick = imprimirOT;
     if (r.externa) activarExterna(r);
 
     // Acciones según estado y rol
@@ -3231,6 +3238,23 @@ const App = (() => {
     if (p.nota) boton("📝 Agregar nota", () => { const n = prompt("Nota para la bitácora:"); if (n && n.trim()) accionOT("nota_ot", { nota: n.trim() }, ""); }, "btn-secundario");
     if (p.cancelar) boton("✖ Cancelar OT", cancelarOTUI, "btn-secundario");
     if (usuarioActual.rol !== "produccion") boton("🖨️ Imprimir OT", imprimirOT, "btn-secundario");
+  }
+
+  // QR con el folio: en el papel, para abrir la OT al capturar después
+  async function qrOT(id) {
+    try {
+      await cargarScript("qrcode.min.js");
+      const q = window.qrcode(0, "M"); q.addData("OT:" + id); q.make();
+      return "<div class='qrot'>" + q.createSvgTag({ cellSize: 2, margin: 0, scalable: true }) + "</div>";
+    } catch (e) { return ""; }
+  }
+
+  async function escanearOT() {
+    const txt = await escanearQR();
+    if (!txt) return;
+    const id = String(txt).trim().toUpperCase().replace(/^OT:/, "");
+    if (!/^OT-\d{4}-\d{5}$/.test(id)) return alert("Ese QR no es de una orden de trabajo: " + txt);
+    verDetalleOT(id);
   }
 
   // Formato de OT para imprimir o guardar como PDF (hoja carta)
@@ -3266,6 +3290,8 @@ const App = (() => {
 
     const bitacora = r.bitacora.map(b => "<tr><td>" + esc(b.fecha) + " " + esc(b.hora) + "</td><td>" + esc(b.nombre || b.usuario) +
       "</td><td><b>" + esc(String(b.evento).replace("_", " ")) + "</b>" + (b.detalle ? " — " + esc(b.detalle) : "") + "</td></tr>").join("");
+    const qr = await qrOT(o.id_ot);
+    const causaHtml = o.causa ? esc(o.causa) : "<span class='cajas'>" + (r.causas || []).map(c => "☐ " + esc(c)).join("&nbsp; ") + "</span>";
 
     w.document.write("<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>" +
       "<title>" + esc(o.id_ot) + "</title><style>" +
@@ -3276,17 +3302,18 @@ const App = (() => {
       ".logo{max-height:14mm;max-width:40mm;margin-right:10px} .izq{display:flex;align-items:center}" +
       "table{width:100%;border-collapse:collapse;margin-bottom:8px} td,th{border:1px solid #888;padding:4px 6px;vertical-align:top}" +
       "th{background:#e5e7eb;text-align:left;font-size:9pt} .etq{font-size:7.5pt;color:#555;text-transform:uppercase}" +
-      ".val{font-size:10pt;min-height:12pt} .num{text-align:right;white-space:nowrap} h2{font-size:10.5pt;background:#1e3a5f;color:#fff;padding:3px 6px;margin:10px 0 4px}" +
+      ".val{font-size:10pt;min-height:12pt} .num{text-align:right;white-space:nowrap} h2{font-size:10.5pt;background:#1e3a5f;color:#fff;padding:3px 6px;margin:10px 0 4px;-webkit-print-color-adjust:exact;print-color-adjust:exact}" +
       ".parado{color:#b91c1c;font-weight:bold} .renglon{border-bottom:1px solid #999;height:7mm}" +
       ".firmas{display:flex;gap:10mm;margin-top:14mm} .firma{flex:1;text-align:center;border-top:1px solid #000;padding-top:3px;font-size:9pt}" +
       ".pie{margin-top:6mm;font-size:7.5pt;color:#666;text-align:right} .bit td{font-size:8.5pt}" +
+      ".folio{display:flex;gap:8px;align-items:center} .qrot svg{width:20mm;height:20mm;display:block} .cajas{font-size:8pt;line-height:1.6}" +
       "@media print{.barra{display:none} .hoja{padding:0}}" +
       "</style></head><body>" +
       "<div class='barra'><button onclick='window.print()'>🖨️ Imprimir / Guardar PDF</button>Papel carta</div>" +
       "<div class='hoja'>" +
       "<div class='enc'><div class='izq'>" + (logo ? "<img class='logo' src='" + esc(logo) + "' alt=''/>" : "") +
         "<div><h1>ORDEN DE TRABAJO DE MANTENIMIENTO</h1><div class='sub'>Mantenimiento Mediese</div></div></div>" +
-        "<div class='folio'><b>" + esc(o.id_ot) + "</b><div class='sub'>Estado: " + esc((ESTADO_OT[o.estado] || {}).txt || o.estado) + "</div></div></div>" +
+        "<div class='folio'><div><b>" + esc(o.id_ot) + "</b><div class='sub'>Estado: " + esc((ESTADO_OT[o.estado] || {}).txt || o.estado) + "</div></div>" + qr + "</div></div>" +
 
       "<table><tr>" + celda("Equipo", "<b>" + esc(o.equipo) + "</b> · " + esc(o.nombre_equipo), 2) +
         celda("Fecha de reporte", esc(o.fecha) + " " + esc(o.hora)) + celda("Reportó", esc(o.nombre_solicitante || o.solicitante)) + "</tr>" +
@@ -3298,7 +3325,7 @@ const App = (() => {
       "<h2>FALLA REPORTADA</h2><table><tr><td><div class='val'>" + esc(o.descripcion_falla) + "</div></td></tr></table>" +
 
       "<h2>TRABAJO REALIZADO</h2><table><tr><td>" + (o.trabajo_realizado ? "<div class='val'>" + esc(o.trabajo_realizado) + "</div>" : lineasVacias(4)) + "</td></tr></table>" +
-      "<table><tr>" + celda("Causa", esc(o.causa || "")) + celda("Inicio", fechaHora(o.inicio)) + celda("Fin", fechaHora(o.fin)) +
+      "<table><tr>" + celda("Causa", causaHtml, 4) + "</tr><tr>" + celda("Inicio (fecha y hora)", fechaHora(o.inicio)) + celda("Fin (fecha y hora)", fechaHora(o.fin)) + celda("Técnico(s)", "") +
         celda("Horas-hombre", o.horas_hombre ? esc(o.horas_hombre) : "") + "</tr></table>" +
 
       "<h2>REFACCIONES Y MATERIALES</h2><table><tr><th>Código</th><th>Descripción</th><th>Cantidad</th><th>Movimiento</th><th>Importe</th></tr>" + material + "</table>" +
@@ -3709,15 +3736,31 @@ const App = (() => {
     await Promise.all(nombres.map(async n => { const f = await api("foto_ot", { nombre: n }); if (f.ok) fotos[n] = f.base64; }));
     const celda = (etq, val, ancho) => "<td" + (ancho ? " colspan='" + ancho + "'" : "") + "><div class='etq'>" + esc(etq) + "</div><div class='val'>" + (val || "&nbsp;") + "</div></td>";
     const si = v => v ? "☒ Sí" : "☐ Sí";
-    const permiso = x.permiso
+    const qr = await qrOT(o.id_ot);
+    try { await cargarPlantillasOT(); } catch (e) {}
+    const renglones = n => Array(n).fill("<div class='renglon'>&nbsp;</div>").join("");
+    const cajaSN = "☐ Sí &nbsp;☐ No";
+    const permisoVacio = ote.permisoBase.map(p => "<tr><td>" + esc(p.texto) + "</td><td class='c'>" + cajaSN + "</td></tr>").join("") +
+      "<tr><td colspan='2'><div class='etq'>Riesgos del trabajo (marca los que aplican y confirma sus puntos)</div>" +
+      ote.riesgos.map(rg => "<div class='riesgo'><b>☐ " + esc((NOMBRE_RIESGO[rg.clave] || rg.clave).replace(/^\S+\s/, "")) + ":</b> " +
+        rg.puntos.map(p => esc(p.texto) + " ☐").join(" · ") + "</div>").join("") + "</td></tr>" +
+      "<tr><td colspan='2'><div class='etq'>Herramienta y material que entra (para contarla a la salida)</div>" + renglones(3) + "</td></tr>" +
+      "<tr><td colspan='2'><div class='etq'>Autorizó (nombre, firma y hora)</div>" + renglones(1) + "</td></tr>";
+    const libVacia = ote.liberacion.map(p => "<tr><td>" + esc(p.texto) + "</td><td class='c'>" + cajaSN + "</td></tr>").join("") +
+      "<tr><td colspan='2'><div class='etq'>Recibe el área — Calidad / Producción (nombre, firma y hora)</div>" + renglones(1) + "</td></tr>";
+    const terminada = ["TERMINADA", "CERRADA"].includes(o.estado);
+    const horasTabla = terminada ? "" : "<h2>REGISTRO DE PERSONAL DEL PROVEEDOR</h2><table><tr><th>Nombre</th><th style='width:16%'>Entrada</th><th style='width:16%'>Salida</th><th style='width:24%'>Firma</th></tr>" +
+      Array(4).fill("<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>").join("") + "</table>";
+    const permiso = !x.permiso ? permisoVacio : x.permiso
       ? x.permiso.puntos.map(p => "<tr><td>" + esc(p.texto) + "</td><td class='c'>" + si(p.ok) + "</td></tr>").join("") +
         "<tr><td colspan='2'><div class='etq'>Herramienta y material que entra</div>" + esc(x.permiso.herramienta) + "</td></tr>"
       : "<tr><td colspan='2'><i>Sin permiso registrado</i></td></tr>";
     const check = x.checklist.map(p => "<tr><td class='c'>" + p.n + "</td><td>" + esc(p.punto) + "</td><td class='c " + (p.res === "NO_OK" ? "mal" : "") + "'>" +
-      (p.res === "OK" ? "OK" : p.res === "NO_OK" ? "NO OK" : p.res === "NA" ? "N/A" : "") + "</td><td>" + esc(p.obs || "") +
+      (p.res === "OK" ? "OK" : p.res === "NO_OK" ? "NO OK" : p.res === "NA" ? "N/A" : "<span class='cajas'>☐ OK<br>☐ No OK<br>☐ N/A</span>") + "</td><td>" + esc(p.obs || "") +
       (p.ot_generada ? "<br><b>OT " + esc(p.ot_generada) + "</b>" : "") +
       ((p.fotos || []).filter(f => fotos[f]).map(f => "<img src='data:image/jpeg;base64," + fotos[f] + "'>").join("")) + "</td></tr>").join("");
-    const lib = x.liberacion
+    const extra = terminada ? "" : Array(3).fill("<tr><td class='c'>+</td><td>&nbsp;</td><td class='c'><span class='cajas'>☐ OK<br>☐ No OK<br>☐ N/A</span></td><td></td></tr>").join("");
+    const lib = !x.liberacion ? libVacia : x.liberacion
       ? x.liberacion.puntos.map(p => "<tr><td>" + esc(p.texto) + "</td><td class='c'>" + si(p.ok) + "</td></tr>").join("") +
         "<tr><td colspan='2'>Recibe el área: <b>" + esc(x.liberacion.libero) + "</b> · " + esc(x.liberacion.fecha) + " " + esc(x.liberacion.hora) + (x.liberacion.notas ? " · " + esc(x.liberacion.notas) : "") + "</td></tr>"
       : "<tr><td colspan='2'><i>Pendiente</i></td></tr>";
@@ -3732,11 +3775,14 @@ const App = (() => {
       ".etq{font-size:7pt;color:#555;text-transform:uppercase} .val{min-height:11pt} .c{text-align:center;white-space:nowrap} .mal{color:#b91c1c;font-weight:bold}" +
       "h2{font-size:10pt;background:#1e3a5f;color:#fff;padding:3px 6px;margin:8px 0 4px;-webkit-print-color-adjust:exact;print-color-adjust:exact} img{max-width:45mm;max-height:35mm;margin:3px 3px 0 0;border:1px solid #ccc}" +
       ".firmas{display:flex;gap:6mm;margin-top:14mm} .firma{flex:1;text-align:center;border-top:1px solid #000;padding-top:3px;font-size:8.5pt} .pie{margin-top:5mm;font-size:7pt;color:#666;text-align:right}" +
+      ".folio{display:flex;gap:8px;align-items:center} .qrot svg{width:20mm;height:20mm;display:block} .cajas{font-size:8pt;white-space:nowrap}" +
+      ".renglon{border-bottom:1px solid #999;height:6.5mm} .riesgo{font-size:8.5pt;margin:2px 0} .nota{font-size:8.5pt;background:#fef3c7;padding:4px 6px;margin-bottom:6px}" +
       "tr{break-inside:avoid} @media print{.barra{display:none} .hoja{padding:0}}</style></head><body>" +
       "<div class='barra'><button onclick='window.print()'>🖨️ Imprimir / Guardar PDF</button>Papel carta</div><div class='hoja'>" +
       "<div class='enc'><div class='izq'>" + (logo ? "<img class='logo' src='" + esc(logo) + "' alt=''>" : "") +
         "<div><h1>ORDEN DE SERVICIO EXTERNO</h1><div class='sub'>Mantenimiento Mediese · Control de contratistas</div></div></div>" +
-        "<div class='folio'><b>" + esc(o.id_ot) + "</b><div class='sub'>Estado: " + esc((ESTADO_OT[o.estado] || {}).txt || o.estado) + "</div></div></div>" +
+        "<div class='folio'><div><b>" + esc(o.id_ot) + "</b><div class='sub'>Estado: " + esc((ESTADO_OT[o.estado] || {}).txt || o.estado) + "</div></div>" + qr + "</div></div>" +
+      (terminada ? "" : "<div class='nota'>Formato de campo: llénalo durante el servicio. Después se captura en la app escaneando el QR (🛠️ Órdenes de trabajo → 📷).</div>") +
       "<table><tr>" + celda("Proveedor", "<b>" + esc(x.proveedor) + "</b>", 2) + celda("Fecha del servicio", esc(x.fecha_servicio)) + celda("Tipo", esc(o.tipo)) + "</tr>" +
       "<tr>" + celda("Técnicos del proveedor", esc(x.tecnicos_externos), 2) + celda("Acompaña", esc(o.nombre_asignado)) + celda("Creó", esc(o.nombre_solicitante || o.solicitante)) + "</tr>" +
       "<tr>" + celda("Área", esc(x.area)) + celda("Equipos", x.equipos_det.map(e => esc(e.codigo) + " " + esc(e.nombre)).join("<br>"), 3) + "</tr>" +
@@ -3745,7 +3791,8 @@ const App = (() => {
         celda("Horas-hombre", o.horas_hombre ? esc(o.horas_hombre) : "") + celda("Refacciones", r.costo_refacciones ? fmtMoneda(r.costo_refacciones) : "") + "</tr></table>" +
       "<h2>1. PERMISO DE TRABAJO" + (x.permiso ? " — autorizó " + esc(x.permiso.nombre_autorizo) + " " + esc(x.permiso.fecha) + " " + esc(x.permiso.hora) +
         (x.permiso.riesgos.length ? " · riesgos: " + esc(x.permiso.riesgos.join(", ")) : "") : "") + "</h2><table>" + permiso + "</table>" +
-      "<h2>2. CHECKLIST DE TRABAJOS" + (x.plantilla ? " — " + esc(x.plantilla) : "") + "</h2><table><tr><th style='width:6%'>#</th><th>Punto</th><th style='width:10%'>Resultado</th><th style='width:38%'>Observación / evidencia</th></tr>" + check + "</table>" +
+      "<h2>2. CHECKLIST DE TRABAJOS" + (x.plantilla ? " — " + esc(x.plantilla) : "") + "</h2><table><tr><th style='width:6%'>#</th><th>Punto</th><th style='width:10%'>Resultado</th><th style='width:38%'>Observación / evidencia</th></tr>" + check + extra + "</table>" +
+      horasTabla +
       "<h2>3. LIBERACIÓN DE HIGIENE</h2><table>" + lib + "</table>" +
       (bit ? "<h2>BITÁCORA</h2><table><tr><th style='width:20%'>Fecha</th><th style='width:18%'>Quién</th><th>Evento</th></tr>" + bit + "</table>" : "") +
       "<div class='firmas'><div class='firma'>Proveedor<br>" + esc(String(x.tecnicos_externos).split(",")[0] || "") + "</div><div class='firma'>Acompañante<br>" + esc(o.nombre_asignado) + "</div>" +
