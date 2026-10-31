@@ -3431,7 +3431,7 @@ const App = (() => {
   // ─── OT de servicio externo (proveedor en planta) ───
 
   const ote = { plantillas: null, permisoBase: [], riesgos: [], liberacion: [], equipos: [], sel: new Set() };
-  const RES_TXT = { OK: "✅ OK", NO_OK: "❌ No OK", NA: "➖ N/A" };
+  const RES_TXT = { OK: "✅ Conforme", NO_OK: "❌ No conforme", NA: "➖ N/A" };
   const NOMBRE_RIESGO = { ELECTRICO: "⚡ Eléctrico", ALTURA: "🪜 Altura", CALIENTE: "🔥 Trabajo en caliente", QUIMICOS: "🧪 Químicos", ESPACIO_CONFINADO: "🕳️ Espacio confinado" };
 
   function hoyISO() {
@@ -3588,7 +3588,7 @@ const App = (() => {
           const res = b.dataset.res;
           let texto = obs.value.trim();
           if (res === "NO_OK" && !texto) {
-            texto = prompt("¿Qué se encontró? (obligatorio en No OK)") || "";
+            texto = prompt("¿Qué se encontró? (obligatorio en No conforme)") || "";
             if (!texto.trim()) return;
           }
           await guardarPuntoOT(id, { n: n, res: res, obs: texto }, res === "NO_OK");
@@ -3855,10 +3855,10 @@ const App = (() => {
         "<tr><td colspan='2'><div class='etq'>Herramienta y material que entra</div>" + esc(x.permiso.herramienta) + "</td></tr>"
       : "<tr><td colspan='2'><i>Sin permiso registrado</i></td></tr>";
     const check = x.checklist.map(p => "<tr><td class='c'>" + p.n + "</td><td>" + esc(p.punto) + "</td><td class='c " + (p.res === "NO_OK" ? "mal" : "") + "'>" +
-      (p.res === "OK" ? "OK" : p.res === "NO_OK" ? "NO OK" : p.res === "NA" ? "N/A" : "<span class='cajas'>☐ OK<br>☐ No OK<br>☐ N/A</span>") + "</td><td>" + esc(p.obs || "") +
+      (p.res === "OK" ? "CONFORME" : p.res === "NO_OK" ? "NO CONFORME" : p.res === "NA" ? "N/A" : "<span class='cajas'>☐ Conforme<br>☐ No conforme<br>☐ N/A</span>") + "</td><td>" + esc(p.obs || "") +
       (p.ot_generada ? "<br><b>OT " + esc(p.ot_generada) + "</b>" : "") +
       ((p.fotos || []).filter(f => fotos[f]).map(f => "<img src='data:image/jpeg;base64," + fotos[f] + "'>").join("")) + "</td></tr>").join("");
-    const extra = terminada ? "" : Array(3).fill("<tr><td class='c'>+</td><td>&nbsp;</td><td class='c'><span class='cajas'>☐ OK<br>☐ No OK<br>☐ N/A</span></td><td></td></tr>").join("");
+    const extra = terminada ? "" : Array(3).fill("<tr><td class='c'>+</td><td>&nbsp;</td><td class='c'><span class='cajas'>☐ Conforme<br>☐ No conforme<br>☐ N/A</span></td><td></td></tr>").join("");
     const lib = !x.liberacion ? libVacia : x.liberacion
       ? x.liberacion.puntos.map(p => "<tr><td>" + esc(p.texto) + "</td><td class='c'>" + si(p.ok) + "</td></tr>").join("") +
         "<tr><td colspan='2'>Recibe el área: <b>" + esc(x.liberacion.libero) + "</b> · " + esc(x.liberacion.fecha) + " " + esc(x.liberacion.hora) + (x.liberacion.notas ? " · " + esc(x.liberacion.notas) : "") + "</td></tr>"
@@ -3891,7 +3891,7 @@ const App = (() => {
       ((x.costos || []).length ? "<h2>DESGLOSE DE COSTOS DEL SERVICIO</h2>" + htmlCostosOT(x).replace("otd-tabla", "") : "") +
       "<h2>1. PERMISO DE TRABAJO" + (x.permiso ? " — autorizó " + esc(x.permiso.nombre_autorizo) + " " + esc(x.permiso.fecha) + " " + esc(x.permiso.hora) +
         (x.permiso.riesgos.length ? " · riesgos: " + esc(x.permiso.riesgos.join(", ")) : "") : "") + "</h2><table>" + permiso + "</table>" +
-      "<h2>2. CHECKLIST DE TRABAJOS" + (x.plantilla ? " — " + esc(x.plantilla) : "") + "</h2><table><tr><th style='width:6%'>#</th><th>Punto</th><th style='width:10%'>Resultado</th><th style='width:38%'>Observación / evidencia</th></tr>" + check + extra + "</table>" +
+      "<h2>2. CHECKLIST DE TRABAJOS" + (x.plantilla ? " — " + esc(x.plantilla) : "") + "</h2><table><tr><th style='width:6%'>#</th><th>Punto</th><th style='width:13%'>Resultado</th><th style='width:38%'>Observación / evidencia</th></tr>" + check + extra + "</table>" +
       horasTabla +
       "<h2>3. LIBERACIÓN DE HIGIENE</h2><table>" + lib + "</table>" +
       (bit ? "<h2>BITÁCORA</h2><table><tr><th style='width:20%'>Fecha</th><th style='width:18%'>Quién</th><th>Evento</th></tr>" + bit + "</table>" : "") +
