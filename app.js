@@ -3222,6 +3222,7 @@ const App = (() => {
     const opera = p.terminar || (p.iniciar && o.estado === "ASIGNADA");
     if (x && !x.permiso && opera) boton("📋 Llenar permiso de trabajo", formPermisoOT);
     if (x && o.estado === "EN_PROCESO" && p.terminar && x.checklist_completo && !x.liberacion) boton("✅ Liberación de higiene", formLiberarOT);
+    if (p.asignar && !["CERRADA", "CANCELADA"].includes(o.estado)) boton("✏️ Editar datos de la OT", formEditarOT, "btn-secundario");
     if (x && p.asignar && o.estado !== "CANCELADA") boton("💲 Costo / factura / técnicos", formDatosServicioOT, "btn-secundario");
     if (p.iniciar && !(x && !x.permiso)) boton(o.estado === "SOLICITADA" ? "✋ Tomar y empezar" : "▶️ Empezar trabajo", () => accionOT("iniciar_ot", {}, "OT iniciada"));
     if (p.material) {
@@ -3762,6 +3763,84 @@ const App = (() => {
     };
     document.getElementById("otd-mas").onclick = agregar;
     activar(); total();
+  }
+
+  // ─── Editar OT ya creada (supervisor) ───
+  async function formEditarOT() {
+    try { await cargarCatalogos(); } catch (e) { return alert("Error: " + e.message); }
+    const r = otVista.actual, o = r.ot, x = r.externa;
+    const activos = (cache.catalogos.equipos || []).filter(e => e.activo !== false);
+    const aISO = f => { const m = String(f || "").match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? m[3] + "-" + m[2] + "-" + m[1] : ""; };
+    if (!x) {
+      formEnAcciones(
+        "<h3 style='margin-top:0'>✏️ Editar OT</h3>" +
+        "<label>Máquina / equipo</label><select id='ote-e-equipo'>" + activos.map(e =>
+          "<option value='" + esc(e.codigo) + "'" + (normalizar(e.codigo) === normalizar(o.equipo) ? " selected" : "") + ">" + esc(e.codigo) + " — " + esc(e.nombre) + "</option>").join("") + "</select>" +
+        "<label>¿Qué pasa?</label><textarea id='ote-e-desc' rows='3'>" + esc(o.descripcion_falla) + "</textarea>",
+        async st => {
+          const res = await api("editar_ot", { id_ot: o.id_ot, equipo: document.getElementById("ote-e-equipo").value,
+            descripcion: document.getElementById("ote-e-desc").value.trim() }, "POST");
+          if (!res.ok) return msg(st, "❌ " + res.error, "error");
+          verDetalleOT(o.id_ot);
+          setTimeout(() => msg(document.getElementById("ot-status"), "✅ " + res.mensaje, "ok"), 600);
+        });
+      return;
+    }
+    const sel = new Set(x.equipos.map(normalizar));
+    const filaTrabajo = p => "<div class='ote-e-trab' data-n='" + (p.n || "") + "'>" +
+      "<span class='ote-e-num'>" + (p.n || "+") + "</span>" +
+      "<input class='ote-e-txt' value='" + esc(p.punto || "") + "' placeholder='Trabajo'>" +
+      (p.res ? "<span class='ote-e-res' title='Ya marcado: no se puede quitar'>" + esc(RES_TXT[p.res] || p.res) + "</span>"
+             : "<button type='button' class='otd-quitar ote-e-quitar' title='Quitar'>✖</button>") + "</div>";
+    formEnAcciones(
+      "<h3 style='margin-top:0'>✏️ Editar OT de servicio externo</h3>" +
+      "<label>Empresa / proveedor</label><input id='ote-e-prov' value='" + esc(x.proveedor) + "'>" +
+      "<label>Técnicos del proveedor</label><input id='ote-e-tec' value='" + esc(x.tecnicos_externos) + "'>" +
+      "<label>Fecha del servicio</label><input id='ote-e-fecha' type='date' value='" + aISO(x.fecha_servicio) + "'>" +
+      "<label>Alcance</label><textarea id='ote-e-desc' rows='3'>" + esc(o.descripcion_falla) + "</textarea>" +
+      "<label>Área</label><input id='ote-e-area' value='" + esc(x.area) + "'>" +
+      "<label>Equipos</label><input id='ote-e-eqbus' placeholder='🔍 Filtrar equipos...' autocomplete='off'><div id='ote-e-eqs' class='ote-equipos'></div>" +
+      "<label>Trabajos del checklist</label><p class='ayuda'>Corrige el texto, quita (✖) los que no se hayan marcado o agrega nuevos. Los ya marcados conservan su resultado.</p>" +
+      "<div id='ote-e-trabajos'>" + x.checklist.map(filaTrabajo).join("") + "</div>" +
+      "<button type='button' class='btn-secundario btn-ancho' id='ote-e-mas'>+ Agregar trabajo</button>",
+      async st => {
+        const puntos = Array.from(document.querySelectorAll("#ote-e-trabajos .ote-e-trab")).map(d => ({
+          n: d.dataset.n ? Number(d.dataset.n) : 0, punto: d.querySelector(".ote-e-txt").value.trim(), quitar: d.classList.contains("quitado")
+        })).filter(q => q.n || q.punto);
+        const res = await api("editar_ot", { id_ot: o.id_ot,
+          proveedor: document.getElementById("ote-e-prov").value.trim(), tecnicos: document.getElementById("ote-e-tec").value.trim(),
+          fecha_servicio: document.getElementById("ote-e-fecha").value, descripcion: document.getElementById("ote-e-desc").value.trim(),
+          area: document.getElementById("ote-e-area").value.trim(), equipos: Array.from(sel), puntos: puntos }, "POST");
+        if (!res.ok) return msg(st, "❌ " + res.error, "error");
+        verDetalleOT(o.id_ot);
+        setTimeout(() => msg(document.getElementById("ot-status"), "✅ " + res.mensaje, "ok"), 600);
+      });
+    const pintarEq = () => {
+      const q = normalizar(document.getElementById("ote-e-eqbus").value);
+      const cont = document.getElementById("ote-e-eqs");
+      cont.innerHTML = "";
+      activos.filter(e => !q || sel.has(normalizar(e.codigo)) || normalizar(e.codigo + " " + e.nombre).includes(q)).slice(0, 150).forEach(e => {
+        const l = document.createElement("label");
+        l.className = "check-fila ote-eq";
+        l.innerHTML = "<input type='checkbox'" + (sel.has(normalizar(e.codigo)) ? " checked" : "") + "> <b>" + esc(e.codigo) + "</b> " + esc(e.nombre);
+        l.querySelector("input").onchange = ev => { if (ev.target.checked) sel.add(normalizar(e.codigo)); else sel.delete(normalizar(e.codigo)); };
+        cont.appendChild(l);
+      });
+    };
+    document.getElementById("ote-e-eqbus").oninput = pintarEq;
+    pintarEq();
+    const cont = document.getElementById("ote-e-trabajos");
+    const activarTrab = () => cont.querySelectorAll(".ote-e-quitar").forEach(b => {
+      b.onclick = () => {
+        const d = b.parentElement;
+        if (!d.dataset.n) { d.remove(); return; }
+        d.classList.toggle("quitado");
+        b.textContent = d.classList.contains("quitado") ? "↺" : "✖";
+        b.title = d.classList.contains("quitado") ? "Recuperar" : "Quitar";
+      };
+    });
+    document.getElementById("ote-e-mas").onclick = () => { cont.insertAdjacentHTML("beforeend", filaTrabajo({})); activarTrab(); cont.lastElementChild.querySelector("input").focus(); };
+    activarTrab();
   }
 
   // Renglones de costo reutilizables (crear OT externa)

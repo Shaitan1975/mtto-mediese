@@ -456,3 +456,10 @@ input[disabled] {
 .otd-tabla { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
 .otd-tabla th, .otd-tabla td { border-bottom: 1px solid #e2e8f0; padding: 4px; text-align: left; }
 .otd-tabla .num { text-align: right; }
+
+.ote-e-trab { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.ote-e-trab .ote-e-txt { flex: 1; min-width: 0; }
+.ote-e-num { width: 22px; text-align: center; font-weight: 700; color: #475569; flex: none; }
+.ote-e-res { font-size: 12px; white-space: nowrap; flex: none; }
+.ote-e-trab .otd-quitar { position: static; flex: none; }
+.ote-e-trab.quitado .ote-e-txt { text-decoration: line-through; opacity: .5; }
