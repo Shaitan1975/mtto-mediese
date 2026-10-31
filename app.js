@@ -3458,7 +3458,10 @@ const App = (() => {
       const pr = await api("listar_proveedores");
       $("ote-proveedores").innerHTML = (pr.ok ? pr.proveedores : []).map(p => "<option value='" + esc(p.razon_social) + "'>").join("");
     } catch (e) { alert("Error: " + e.message); return volverAlMenu(); }
-    ["ote-proveedor", "ote-tecnicos", "ote-desc", "ote-area", "ote-eq-buscar", "ote-costo", "ote-doc", "ote-nombre-pl"].forEach(id => { $(id).value = ""; });
+    ["ote-proveedor", "ote-tecnicos", "ote-desc", "ote-area", "ote-eq-buscar", "ote-doc", "ote-nombre-pl"].forEach(id => { $(id).value = ""; });
+    $("ote-costos").innerHTML = "";
+    $("ote-costo-mas").onclick = agregarCostoOTE;
+    $("ote-doc").onchange = () => document.querySelectorAll("#ote-costos .otd-factura").forEach(i => { if (!i.value) i.value = $("ote-doc").value; });
     $("ote-fecha").value = hoyISO(); $("ote-fecha").max = hoyISO();
     $("ote-tipo").value = "PREVENTIVO"; $("ote-prioridad").value = "MEDIA";
     llenarSelect($("ote-acompanante"), otVista.asignables, u => u.usuario, u => u.nombre + " (" + u.rol + ")", "Elige quién acompaña...");
@@ -3475,6 +3478,7 @@ const App = (() => {
     ote.sel = new Set();
     $("ote-eq-buscar").oninput = pintarEquiposOTE;
     pintarEquiposOTE();
+    refrescarCostosOTE();
     msg($("ote-status"), "");
     mostrarVista("view-ot-externa");
     window.scrollTo(0, 0);
@@ -3489,7 +3493,7 @@ const App = (() => {
       const l = document.createElement("label");
       l.className = "check-fila ote-eq";
       l.innerHTML = "<input type='checkbox'" + (ote.sel.has(e.codigo) ? " checked" : "") + "> <b>" + esc(e.codigo) + "</b> " + esc(e.nombre);
-      l.querySelector("input").onchange = ev => { if (ev.target.checked) ote.sel.add(e.codigo); else ote.sel.delete(e.codigo); contarEquiposOTE(); };
+      l.querySelector("input").onchange = ev => { if (ev.target.checked) ote.sel.add(e.codigo); else ote.sel.delete(e.codigo); contarEquiposOTE(); refrescarCostosOTE(); };
       cont.appendChild(l);
     });
     contarEquiposOTE();
@@ -3506,7 +3510,7 @@ const App = (() => {
       descripcion: $("ote-desc").value.trim(), area: $("ote-area").value.trim(), equipos: Array.from(ote.sel),
       plantilla: $("ote-plantilla").value,
       puntos: $("ote-puntos").value.split("\n").map(s => s.replace(/^[-•*\d.)\s]+/, "").trim()).filter(Boolean),
-      costo_servicio: $("ote-costo").value, doc_servicio: $("ote-doc").value.trim()
+      costos: leerCostos($("ote-costos")), doc_servicio: $("ote-doc").value.trim()
     };
     if ($("ote-guardar-pl").checked) body.guardar_plantilla = $("ote-nombre-pl").value.trim();
     if (!body.proveedor) return msg(st, "❌ Escribe la empresa / proveedor", "error");
@@ -3758,6 +3762,56 @@ const App = (() => {
     };
     document.getElementById("otd-mas").onclick = agregar;
     activar(); total();
+  }
+
+  // Renglones de costo reutilizables (crear OT externa)
+  function filaCostoHTML(l, eqs) {
+    return "<div class='otd-linea'>" +
+      "<input class='otd-concepto' placeholder='Concepto / trabajo' value='" + esc(l.concepto || "") + "'>" +
+      "<select class='otd-equipo'><option value=''>General (sin equipo)</option>" +
+        eqs.map(e => "<option value='" + esc(e.codigo) + "'" + (normalizar(l.equipo) === normalizar(e.codigo) ? " selected" : "") + ">" + esc(e.codigo) + " " + esc(e.nombre) + "</option>").join("") + "</select>" +
+      "<input class='otd-importe' type='number' inputmode='decimal' min='0' step='0.01' placeholder='Importe' value='" + esc(l.importe || "") + "'>" +
+      "<input class='otd-factura' placeholder='Factura' value='" + esc(l.factura || "") + "'>" +
+      "<button type='button' class='otd-quitar' title='Quitar'>✖</button></div>";
+  }
+
+  function leerCostos(cont) {
+    return Array.from(cont.querySelectorAll(".otd-linea")).map(d => ({
+      concepto: d.querySelector(".otd-concepto").value.trim(), equipo: d.querySelector(".otd-equipo").value,
+      importe: d.querySelector(".otd-importe").value, factura: d.querySelector(".otd-factura").value.trim()
+    })).filter(l => l.concepto || l.importe);
+  }
+
+  function equiposElegidosOTE() {
+    return ote.equipos.filter(e => ote.sel.has(e.codigo)).map(e => ({ codigo: e.codigo, nombre: e.nombre }));
+  }
+
+  function totalCostosOTE() {
+    const t = Array.from(document.querySelectorAll("#ote-costos .otd-importe")).reduce((a, i) => a + (Number(i.value) || 0), 0);
+    document.getElementById("ote-costo-total").textContent = fmtMoneda(t);
+  }
+
+  function activarCostosOTE() {
+    const cont = document.getElementById("ote-costos");
+    cont.querySelectorAll(".otd-importe").forEach(i => { i.oninput = totalCostosOTE; });
+    cont.querySelectorAll(".otd-quitar").forEach(b => { b.onclick = () => { b.parentElement.remove(); if (!cont.children.length) agregarCostoOTE(); totalCostosOTE(); }; });
+  }
+
+  function agregarCostoOTE() {
+    const cont = document.getElementById("ote-costos");
+    const ult = cont.lastElementChild;
+    cont.insertAdjacentHTML("beforeend", filaCostoHTML({ factura: ult ? ult.querySelector(".otd-factura").value : document.getElementById("ote-doc").value }, equiposElegidosOTE()));
+    activarCostosOTE();
+  }
+
+  // Si cambian los equipos elegidos, los renglones solo ofrecen esos (conserva lo capturado)
+  function refrescarCostosOTE() {
+    const cont = document.getElementById("ote-costos");
+    const datos = leerCostos(cont);
+    const eqs = equiposElegidosOTE();
+    datos.forEach(l => { if (l.equipo && !eqs.some(e => e.codigo === l.equipo)) l.equipo = ""; });
+    cont.innerHTML = (datos.length ? datos : [{ factura: document.getElementById("ote-doc").value }]).map(l => filaCostoHTML(l, eqs)).join("");
+    activarCostosOTE(); totalCostosOTE();
   }
 
   function htmlCostosOT(x) {
