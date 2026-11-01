@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Mantenimiento Mediese</title>
-  <link rel="stylesheet" href="styles.css?v=20261031f" />
+  <link rel="stylesheet" href="styles.css?v=20261101a" />
   <link rel="icon" type="image/svg+xml" href="icono.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
@@ -66,6 +66,7 @@
         <button id="btn-reportar">🚨 Reportar falla</button>
         <button id="btn-ots">🛠️ Órdenes de trabajo</button>
         <button id="btn-ot-externa">🔧 Servicio externo</button>
+        <button id="btn-solicitudes">🛒 Solicitudes de compra</button>
         <button id="btn-salida">➖ Salida</button>
         <button id="btn-devolucion">↩️ Devolución</button>
         <button id="btn-stock">🔍 Ver stock</button>
@@ -870,6 +871,24 @@
       </div>
     </section>
 
+    <section id="view-solicitudes" class="hidden">
+      <h2>🛒 Solicitudes de compra</h2>
+      <div class="chips" id="sol-tabs">
+        <button class="chip activo" data-f="abiertas">Abiertas</button>
+        <button class="chip" data-f="solicitada">Por aprobar</button>
+        <button class="chip" data-f="aprobada">Por comprar</button>
+        <button class="chip" data-f="comprada">Por llegar</button>
+        <button class="chip" data-f="recibida">Recibidas</button>
+        <button class="chip" data-f="todas">Todas</button>
+      </div>
+      <p id="sol-contadores" class="ayuda"></p>
+      <button class="btn-primary btn-ancho" id="btn-sol-nueva">➕ Nueva solicitud (sin OT)</button>
+      <button class="btn-secundario btn-ancho" id="btn-sol-exportar">⬇️ Descargar lista para Excel</button>
+      <div id="sol-form" class="hidden"></div>
+      <div id="lista-sol"></div>
+      <button class="btn-primary" onclick="App.volverAlMenu()" style="background:#6b7280;">Volver</button>
+    </section>
+
     <section id="view-ot-detalle" class="hidden">
       <div id="ot-detalle"></div>
       <p id="ot-status" class="send-status"></p>
@@ -896,7 +915,7 @@
     <button id="scanner-cerrar">Cerrar</button>
   </div>
 
-  <script src="app.js?v=20261031f"></script>
+  <script src="app.js?v=20261101a"></script>
   <script>App.initApp();</script>
 </body>
 </html>

@@ -223,6 +223,9 @@ const App = (() => {
     addEvent("btn-ots-nueva", "click", () => abrirNuevaOT());
     addEvent("btn-otn-scan", "click", escanearEquipoOT);
     addEvent("btn-ot-externa", "click", abrirOTExterna);
+    addEvent("btn-solicitudes", "click", () => verSolicitudes("abiertas"));
+    addEvent("btn-sol-nueva", "click", nuevaSolicitudSuelta);
+    addEvent("btn-sol-exportar", "click", exportarSolicitudes);
     addEvent("btn-ots-scan", "click", escanearOT);
     addEvent("btn-ots-externa", "click", abrirOTExterna);
     addEvent("btn-ote-guardar", "click", guardarOTExterna);
@@ -291,7 +294,7 @@ const App = (() => {
       "view-equipos", "view-equipo-form", "view-usuarios", "view-usuario-form",
       "view-password", "view-config",
       "view-conteo", "view-pieza-nueva", "view-alta-ok", "view-revisar", "view-conteos", "view-etiquetas",
-      "view-ots", "view-ot-nueva", "view-ot-externa", "view-ot-detalle", "view-equipo-hist",
+      "view-ots", "view-ot-nueva", "view-ot-externa", "view-ot-detalle", "view-solicitudes", "view-equipo-hist",
       "view-loading"
     ].forEach(v => {
       const el = document.getElementById(v);
@@ -3002,6 +3005,7 @@ const App = (() => {
     SOLICITADA: { txt: "Solicitada", color: "#b45309", bg: "#fef3c7" },
     ASIGNADA:   { txt: "Asignada",   color: "#1d4ed8", bg: "#dbeafe" },
     EN_PROCESO: { txt: "En proceso", color: "#7c3aed", bg: "#ede9fe" },
+    EN_ESPERA:  { txt: "⏸️ Espera refacción", color: "#9a3412", bg: "#ffedd5" },
     TERMINADA:  { txt: "Terminada",  color: "#047857", bg: "#d1fae5" },
     CERRADA:    { txt: "Cerrada",    color: "#374151", bg: "#e5e7eb" },
     CANCELADA:  { txt: "Cancelada",  color: "#6b7280", bg: "#f3f4f6" }
@@ -3059,7 +3063,7 @@ const App = (() => {
     document.getElementById("ot-contadores").innerHTML = usuarioActual.rol === "produccion" ? "" :
       (c.PARADOS ? "<b style='color:#b91c1c'>⛔ " + c.PARADOS + " parado(s)</b> · " : "") +
       "Solicitadas " + (c.SOLICITADA || 0) + " · Asignadas " + (c.ASIGNADA || 0) +
-      " · En proceso " + (c.EN_PROCESO || 0) + " · Por cerrar " + (c.TERMINADA || 0);
+      " · En proceso " + (c.EN_PROCESO || 0) + " · En espera " + (c.EN_ESPERA || 0) + " · Por cerrar " + (c.TERMINADA || 0);
     const cont = document.getElementById("lista-ots");
     cont.innerHTML = r.ots.length ? "" : "<p style='text-align:center;padding:20px;color:#888;'>No hay órdenes en esta lista.</p>";
     r.ots.forEach(o => cont.appendChild(tarjetaOT(o)));
@@ -3173,6 +3177,7 @@ const App = (() => {
         filaDato(r.externa ? "Creó" : "Reportó", esc(o.nombre_solicitante || o.solicitante) + " · " + esc(o.fecha) + " " + esc(o.hora)) +
         filaDato(r.externa ? "Acompaña" : "Técnico", o.nombre_asignado ? "👷 " + esc(o.nombre_asignado) : "<i>Sin asignar</i>") +
         (o.minutos_trabajo ? filaDato("Tiempo trabajo", esc(duracion(o.minutos_trabajo))) : "") +
+        (o.minutos_espera ? filaDato("En espera", esc(duracion(o.minutos_espera)) + " (refacción)") : "") +
         (o.equipo_parado === "SI" && !o.paro_abierto ? filaDato("Tiempo parado", esc(duracion(o.minutos_paro))) : "") +
         (o.trabajo_realizado ? filaDato("Trabajo", esc(o.trabajo_realizado)) : "") +
         (o.causa ? filaDato("Causa", esc(o.causa)) : "") +
@@ -3189,6 +3194,8 @@ const App = (() => {
       r.puede_externa = { checklist: o.estado === "EN_PROCESO" && (p.terminar) };
       html += htmlExterna(r);
     }
+
+    html += htmlSolicitudesOT(r.solicitudes || []);
 
     // Material
     html += "<h3>Material " + (r.materiales.length ? "<span class='ayuda'>(" + fmtMoneda(r.costo_refacciones) + ")</span>" : "") + "</h3>";
@@ -3229,6 +3236,12 @@ const App = (() => {
       boton("➖ Sacar material para esta OT", () => abrirMovimiento("SALIDA", { ot: o.id_ot, equipo: o.equipo }));
       if (r.materiales.length) boton("↩️ Devolver material sobrante", () => abrirMovimiento("DEVOLUCION", { ot: o.id_ot, equipo: o.equipo }), "btn-secundario");
     }
+    if (p.reanudar) boton("▶️ Reanudar trabajo", () => {
+      const pend = (r.solicitudes || []).filter(s => ["SOLICITADA", "APROBADA", "COMPRADA"].includes(s.estado)).length;
+      if (pend && !confirm("Todavía hay " + pend + " refacción(es) sin recibir. ¿Reanudar de todos modos?")) return;
+      accionOT("reanudar_ot", {}, "OT reanudada");
+    });
+    if (p.solicitar) boton("🛒 Falta refacción (solicitar compra)", formSolicitudOT, "btn-secundario");
     if (p.equipo_opera) boton("✅ El equipo ya funciona", () => { if (confirm("¿El equipo ya está operando?")) accionOT("equipo_opera_ot", {}, ""); }, "btn-secundario");
     if (p.terminar && (!x || x.liberacion)) boton("🏁 Terminar OT", formTerminarOT);
     if (p.asignar && ["SOLICITADA", "ASIGNADA", "EN_PROCESO"].includes(o.estado)) boton(o.nombre_asignado ? "👷 Reasignar / prioridad" : "👷 Asignar técnico", formAsignarOT, "btn-secundario");
@@ -3978,6 +3991,221 @@ const App = (() => {
         "<div class='firma'>Jefe de mantenimiento</div><div class='firma'>Calidad / Inocuidad<br>" + esc(x.liberacion ? x.liberacion.libero : "") + "</div></div>" +
       "<div class='pie'>Impreso " + new Date().toLocaleString("es-MX") + " por " + esc(usuarioActual.nombre || usuarioActual.user) + "</div></div></body></html>");
     w.document.close();
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // SOLICITUDES DE COMPRA DE REFACCIONES
+  // ═══════════════════════════════════════════════════════════════
+
+  const ESTADO_SOL = {
+    SOLICITADA: { txt: "Solicitada", color: "#b45309", bg: "#fef3c7" },
+    APROBADA:   { txt: "Aprobada",   color: "#1d4ed8", bg: "#dbeafe" },
+    COMPRADA:   { txt: "Comprada",   color: "#7c3aed", bg: "#ede9fe" },
+    RECIBIDA:   { txt: "Recibida",   color: "#047857", bg: "#d1fae5" },
+    RECHAZADA:  { txt: "Rechazada",  color: "#b91c1c", bg: "#fee2e2" },
+    CANCELADA:  { txt: "Cancelada",  color: "#6b7280", bg: "#f3f4f6" }
+  };
+  const solVista = { filtro: "abiertas", lista: [], puedeComprar: false };
+
+  function chipSol(e) {
+    const s = ESTADO_SOL[e] || { txt: e, color: "#374151", bg: "#e5e7eb" };
+    return "<span style='background:" + s.bg + ";color:" + s.color + ";border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;'>" + esc(s.txt) + "</span>";
+  }
+
+  function htmlFormSolicitud(conOT) {
+    return "<h3 style='margin-top:0'>🛒 Solicitar refacción</h3>" +
+      "<label>Refacción del catálogo <span class='ayuda'>(si no está, déjalo vacío y descríbela abajo)</span></label>" +
+      "<input id='sol-ref' list='sol-refs' placeholder='🔍 Código o descripción' autocomplete='off'><datalist id='sol-refs'></datalist>" +
+      "<label>Descripción *</label><input id='sol-desc' placeholder='Ej. Sello mecánico 1 1/4\"'>" +
+      "<div class='form-grid'><div class='form-grupo'><label>No. de parte</label><input id='sol-parte'></div>" +
+      "<div class='form-grupo'><label>Marca</label><input id='sol-marca'></div>" +
+      "<div class='form-grupo'><label>Cantidad *</label><input id='sol-cant' type='number' inputmode='decimal' min='0' step='any' value='1'></div>" +
+      "<div class='form-grupo'><label>Unidad</label><input id='sol-unidad' value='PZA'></div>" +
+      "<div class='form-grupo'><label>Urgencia</label><select id='sol-urg'><option value=''>Automática</option><option>ALTA</option><option>MEDIA</option><option>BAJA</option></select></div>" +
+      "<div class='form-grupo'><label>Proveedor sugerido</label><input id='sol-prov' list='sol-provs'><datalist id='sol-provs'></datalist></div></div>" +
+      "<label>Notas</label><input id='sol-notas' placeholder='Para qué es, medidas, foto de placa...'>" +
+      "<label class='check-fila' style='margin-top:8px'>📷 Foto de la pieza (opcional) <input type='file' id='sol-foto' accept='image/*' capture='environment'></label>" +
+      (conOT ? "<label class='check-fila'><input type='checkbox' id='sol-pausar' checked> Poner la OT <b>en espera de refacción</b> (ese tiempo no cuenta como trabajo)</label>" : "");
+  }
+
+  async function prepararFormSolicitud() {
+    const refs = cache.refacciones || await refrescarRefacciones();
+    document.getElementById("sol-refs").innerHTML = refs.map(r => "<option value='" + esc(r.codigo + " — " + r.descripcion) + "'>").join("");
+    api("listar_proveedores").then(pr => {
+      const dl = document.getElementById("sol-provs");
+      if (dl && pr.ok) dl.innerHTML = pr.proveedores.map(p => "<option value='" + esc(p.razon_social) + "'>").join("");
+    });
+    document.getElementById("sol-ref").onchange = () => {
+      const v = document.getElementById("sol-ref").value;
+      const r = refs.find(x => v.indexOf(x.codigo + " — ") === 0 || normalizar(v) === normalizar(x.codigo));
+      if (!r) return;
+      document.getElementById("sol-desc").value = r.descripcion;
+      document.getElementById("sol-unidad").value = r.unidad || "PZA";
+      document.getElementById("sol-marca").value = r.marca || "";
+      document.getElementById("sol-parte").value = r.num_parte_fabricante || "";
+      if (r.proveedor_habitual) document.getElementById("sol-prov").value = r.proveedor_habitual;
+    };
+  }
+
+  async function leerFormSolicitud(st) {
+    const $ = id => document.getElementById(id);
+    const refs = cache.refacciones || [];
+    const v = $("sol-ref").value;
+    const r = v ? refs.find(x => v.indexOf(x.codigo + " — ") === 0 || normalizar(v) === normalizar(x.codigo)) : null;
+    if (v && !r) { msg(st, "❌ Esa refacción no está en el catálogo: borra el campo y descríbela abajo", "error"); return null; }
+    const body = {
+      codigo: r ? r.codigo : "", descripcion: $("sol-desc").value.trim(), num_parte: $("sol-parte").value.trim(), marca: $("sol-marca").value.trim(),
+      cantidad: Number($("sol-cant").value), unidad: $("sol-unidad").value.trim(), urgencia: $("sol-urg").value,
+      proveedor: $("sol-prov").value.trim(), notas: $("sol-notas").value.trim()
+    };
+    if (body.descripcion.length < 3) { msg(st, "❌ Describe la refacción", "error"); return null; }
+    if (!(body.cantidad > 0)) { msg(st, "❌ Escribe la cantidad", "error"); return null; }
+    const f = $("sol-foto").files[0];
+    if (f) { try { body.foto_base64 = await comprimirFoto(f); } catch (e) { msg(st, "❌ No se pudo leer la foto", "error"); return null; } }
+    if ($("sol-pausar")) body.pausar = $("sol-pausar").checked;
+    return body;
+  }
+
+  function formSolicitudOT() {
+    const o = otVista.actual.ot;
+    formEnAcciones(htmlFormSolicitud(true), async st => {
+      const body = await leerFormSolicitud(st);
+      if (!body) return;
+      body.id_ot = o.id_ot;
+      msg(st, "Enviando...");
+      const r = await api("crear_solicitud", body, "POST");
+      if (!r.ok) return msg(st, "❌ " + r.error, "error");
+      vibrar(80);
+      verDetalleOT(o.id_ot);
+      setTimeout(() => msg(document.getElementById("ot-status"), "✅ " + r.mensaje, "ok"), 600);
+    });
+    if (!["ASIGNADA", "EN_PROCESO"].includes(o.estado)) document.getElementById("sol-pausar").closest("label").remove();
+    prepararFormSolicitud();
+  }
+
+  function htmlSolicitudesOT(lista) {
+    if (!lista.length) return "";
+    return "<h3>🛒 Refacciones solicitadas</h3>" + lista.map(s =>
+      "<div class='item-toque' style='cursor:default'><div style='display:flex;justify-content:space-between;gap:8px;'><span class='cod'>" + esc(s.id_solicitud) + "</span>" + chipSol(s.estado) + "</div>" +
+      "<div><b>" + esc(s.cantidad) + " " + esc(s.unidad) + "</b> · " + (s.codigo ? esc(s.codigo) + " " : "") + esc(s.descripcion) + "</div>" +
+      "<div class='sub'>" + lineaSeguimientoSol(s) + "</div></div>").join("");
+  }
+
+  function lineaSeguimientoSol(s) {
+    return [s.urgencia ? "Urgencia " + esc(s.urgencia) : "", s.aprobo && s.estado !== "RECHAZADA" ? "Aprobó " + esc(s.aprobo) : "",
+      s.oc ? "OC " + esc(s.oc) : "", s.proveedor_compra || s.proveedor_sugerido ? esc(s.proveedor_compra || s.proveedor_sugerido) : "",
+      s.fecha_estimada && s.estado === "COMPRADA" ? "llega aprox. " + esc(s.fecha_estimada) : "",
+      s.fecha_recibida ? "recibida " + esc(s.fecha_recibida) : "", s.motivo_rechazo ? "Motivo: " + esc(s.motivo_rechazo) : ""]
+      .filter(Boolean).join(" · ");
+  }
+
+  async function verSolicitudes(filtro) {
+    if (filtro) solVista.filtro = filtro;
+    mostrarVista("view-loading");
+    document.getElementById("loading-text").textContent = "Cargando solicitudes...";
+    const r = await api("listar_solicitudes", { filtro: solVista.filtro });
+    if (!r.ok) { alert("Error: " + r.error); return volverAlMenu(); }
+    solVista.lista = r.solicitudes; solVista.puedeComprar = r.puede_comprar;
+    document.querySelectorAll("#sol-tabs [data-f]").forEach(b => {
+      b.classList.toggle("activo", b.dataset.f === solVista.filtro);
+      b.onclick = () => verSolicitudes(b.dataset.f);
+    });
+    const c = r.contadores;
+    document.getElementById("sol-contadores").textContent = "Por aprobar " + c.SOLICITADA + " · Por comprar " + c.APROBADA + " · Por llegar " + c.COMPRADA;
+    document.getElementById("sol-form").classList.add("hidden");
+    const cont = document.getElementById("lista-sol");
+    cont.innerHTML = r.solicitudes.length ? "" : "<p style='text-align:center;padding:20px;color:#888;'>No hay solicitudes en esta lista.</p>";
+    r.solicitudes.forEach(s => cont.appendChild(tarjetaSolicitud(s)));
+    mostrarVista("view-solicitudes");
+  }
+
+  function tarjetaSolicitud(s) {
+    const d = document.createElement("div");
+    d.className = "item-toque";
+    d.style.cursor = "default";
+    d.style.borderLeft = "5px solid " + (COLOR_PRIORIDAD[s.urgencia] || "#cbd5e1");
+    d.innerHTML = "<div style='display:flex;justify-content:space-between;gap:8px;align-items:center;'><span class='cod'>" + esc(s.id_solicitud) + "</span>" + chipSol(s.estado) + "</div>" +
+      "<div style='margin-top:4px;'><b>" + esc(s.cantidad) + " " + esc(s.unidad) + "</b> · " + (s.codigo ? "<b>" + esc(s.codigo) + "</b> " : "<i>(nueva)</i> ") + esc(s.descripcion) + "</div>" +
+      (s.num_parte || s.marca ? "<div class='sub'>" + esc([s.marca, s.num_parte].filter(Boolean).join(" · No. parte ")) + "</div>" : "") +
+      "<div class='sub'>" + esc(s.fecha) + " · " + esc(s.nombre_solicitante || s.solicitante) + (s.ot ? " · <a href='#' data-ot='" + esc(s.ot) + "'>" + esc(s.ot) + "</a> " + esc(s.equipo) : "") + "</div>" +
+      (s.notas ? "<div class='sub'>📝 " + esc(s.notas) + "</div>" : "") +
+      "<div class='sub'>" + lineaSeguimientoSol(s) + "</div><div class='sol-acc'></div>";
+    const a = d.querySelector("[data-ot]");
+    if (a) a.onclick = ev => { ev.preventDefault(); verDetalleOT(a.dataset.ot); };
+    const acc = d.querySelector(".sol-acc");
+    const b = (txt, fn, cl) => { const x = document.createElement("button"); x.className = "chip" + (cl ? " " + cl : ""); x.textContent = txt; x.onclick = fn; acc.appendChild(x); };
+    if (s.foto) b("🖼️ Foto", () => verFotoSol(s.foto));
+    if (solVista.puedeComprar && s.estado === "SOLICITADA") {
+      b("✅ Aprobar", () => accionSol("aprobar_solicitud", { id_solicitud: s.id_solicitud }));
+      b("✖ Rechazar", () => { const m = prompt("Motivo del rechazo:"); if (m && m.trim()) accionSol("aprobar_solicitud", { id_solicitud: s.id_solicitud, rechazar: true, motivo: m.trim() }); });
+    }
+    if (solVista.puedeComprar && ["APROBADA", "COMPRADA"].includes(s.estado)) b(s.estado === "COMPRADA" ? "✏️ Datos de compra" : "🧾 Registrar compra", () => {
+      const oc = prompt("Número de orden de compra:", s.oc || ""); if (!oc || !oc.trim()) return;
+      const prov = prompt("Proveedor:", s.proveedor_compra || s.proveedor_sugerido || ""); if (prov === null) return;
+      const fe = prompt("Fecha estimada de llegada (dd/mm/aaaa, opcional):", s.fecha_estimada || ""); if (fe === null) return;
+      accionSol("comprar_solicitud", { id_solicitud: s.id_solicitud, oc: oc.trim(), proveedor: prov.trim(), fecha_estimada: fe.trim() });
+    });
+    if (esSupervisor() && ["APROBADA", "COMPRADA"].includes(s.estado)) b("📦 Marcar recibida", () => {
+      const ref = prompt("Llegó sin entrada al almacén. Referencia (factura, remisión...):", ""); if (ref === null) return;
+      accionSol("recibir_solicitud", { id_solicitud: s.id_solicitud, referencia: ref.trim() });
+    });
+    if (["SOLICITADA", "APROBADA"].includes(s.estado) && (esSupervisor() || s.solicitante === usuarioActual.user)) b("Cancelar", () => {
+      const m = prompt("Motivo de la cancelación:"); if (m && m.trim()) accionSol("cancelar_solicitud", { id_solicitud: s.id_solicitud, motivo: m.trim() });
+    });
+    if (!acc.children.length) acc.remove();
+    return d;
+  }
+
+  async function accionSol(accion, datos) {
+    const r = await api(accion, datos, "POST");
+    if (!r.ok) return alert("Error: " + r.error);
+    vibrar(60);
+    verSolicitudes();
+  }
+
+  async function verFotoSol(nombre) {
+    const w = window.open("", "_blank");
+    if (!w) return alert("Permite las ventanas emergentes para ver la foto.");
+    w.document.write("<p style='font-family:Arial'>Cargando foto...</p>");
+    const r = await api("foto_solicitud", { nombre: nombre });
+    w.document.body.innerHTML = r.ok ? "<img style='max-width:100%' src='data:image/jpeg;base64," + r.base64 + "'>" : "<p>❌ " + esc(r.error) + "</p>";
+  }
+
+  function nuevaSolicitudSuelta() {
+    const f = document.getElementById("sol-form");
+    f.innerHTML = "<div class='tarjeta-conteo'>" + htmlFormSolicitud(false) +
+      "<p id='sol-status' class='send-status'></p><div class='form-acciones'><button class='btn-secundario' id='sol-cancelar'>Cancelar</button>" +
+      "<button class='btn-primary' id='sol-guardar'>Enviar solicitud</button></div></div>";
+    f.classList.remove("hidden");
+    document.getElementById("sol-cancelar").onclick = () => f.classList.add("hidden");
+    document.getElementById("sol-guardar").onclick = async () => {
+      const st = document.getElementById("sol-status"), btn = document.getElementById("sol-guardar");
+      const body = await leerFormSolicitud(st);
+      if (!body) return;
+      btn.disabled = true; msg(st, "Enviando...");
+      try {
+        const r = await api("crear_solicitud", body, "POST");
+        if (!r.ok) return msg(st, "❌ " + r.error, "error");
+        vibrar(80); alert("✅ " + r.mensaje); verSolicitudes("abiertas");
+      } finally { btn.disabled = false; }
+    };
+    prepararFormSolicitud();
+    f.scrollIntoView({ behavior: "smooth" });
+  }
+
+  // Excel/CSV para cargar a las órdenes de compra
+  function exportarSolicitudes() {
+    if (!solVista.lista.length) return alert("No hay solicitudes en esta lista.");
+    const cols = [["Solicitud", "id_solicitud"], ["Fecha", "fecha"], ["Estado", "estado"], ["Urgencia", "urgencia"], ["Código", "codigo"],
+      ["Descripción", "descripcion"], ["No. parte", "num_parte"], ["Marca", "marca"], ["Cantidad", "cantidad"], ["Unidad", "unidad"],
+      ["Proveedor sugerido", "proveedor_sugerido"], ["OT", "ot"], ["Equipo", "equipo"], ["Solicitó", "nombre_solicitante"],
+      ["Aprobó", "aprobo"], ["OC", "oc"], ["Proveedor compra", "proveedor_compra"], ["Llegada estimada", "fecha_estimada"], ["Notas", "notas"]];
+    const q = v => '"' + String(v === undefined || v === null ? "" : v).replace(/"/g, '""') + '"';
+    const csv = "﻿" + cols.map(c => q(c[0])).join(",") + "\n" + solVista.lista.map(s => cols.map(c => q(s[c[1]])).join(",")).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = "solicitudes_compra_" + solVista.filtro + "_" + new Date().toISOString().slice(0, 10) + ".csv";
+    document.body.appendChild(a); a.click(); a.remove();
   }
 
   // ─── Historial del equipo ───

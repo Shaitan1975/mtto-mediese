@@ -463,3 +463,6 @@ input[disabled] {
 .ote-e-res { font-size: 12px; white-space: nowrap; flex: none; }
 .ote-e-trab .otd-quitar { position: static; flex: none; }
 .ote-e-trab.quitado .ote-e-txt { text-decoration: line-through; opacity: .5; }
+
+.sol-acc { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.sol-acc .chip { padding: 6px 10px; font-size: 13px; }
