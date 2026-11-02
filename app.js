@@ -3231,7 +3231,7 @@ const App = (() => {
     if (x && o.estado === "EN_PROCESO" && p.terminar && x.checklist_completo && !x.liberacion) boton("✅ Liberación de higiene", formLiberarOT);
     if (p.asignar && !["CERRADA", "CANCELADA"].includes(o.estado)) boton("✏️ Editar datos de la OT", formEditarOT, "btn-secundario");
     if (x && p.asignar && o.estado !== "CANCELADA") boton("💲 Costo / factura / técnicos", formDatosServicioOT, "btn-secundario");
-    if (p.iniciar && !(x && !x.permiso)) boton(o.estado === "SOLICITADA" ? "✋ Tomar y empezar" : "▶️ Empezar trabajo", () => accionOT("iniciar_ot", {}, "OT iniciada"));
+    if (p.iniciar && !(x && !x.permiso)) boton(o.estado === "SOLICITADA" ? "✋ Tomar y empezar" : "▶️ Empezar trabajo", formIniciarOT);
     if (p.material) {
       boton("➖ Sacar material para esta OT", () => abrirMovimiento("SALIDA", { ot: o.id_ot, equipo: o.equipo }));
       if (r.materiales.length) boton("↩️ Devolver material sobrante", () => abrirMovimiento("DEVOLUCION", { ot: o.id_ot, equipo: o.equipo }), "btn-secundario");
@@ -3413,6 +3413,42 @@ const App = (() => {
         if (!r.ok) return msg(st, "❌ " + r.error, "error");
         verDetalleOT(o.id_ot);
       });
+  }
+
+  // Empezar: ahora, o con la fecha/hora real si se olvidó presionar el botón
+  function formIniciarOT() {
+    const o = otVista.actual.ot;
+    const p2 = n => String(n).padStart(2, "0");
+    const local = d => d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()) + "T" + p2(d.getHours()) + ":" + p2(d.getMinutes());
+    const ahoraLocal = local(new Date());
+    const m = String(o.fecha).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    const minimo = m ? m[3] + "-" + m[2] + "-" + m[1] + "T" + String(o.hora).slice(0, 5) : "";
+    formEnAcciones(
+      "<h3 style='margin-top:0'>▶️ Empezar trabajo</h3>" +
+      "<label class='check-fila'><input type='radio' name='oti-cuando' value='ahora' checked> <span><b>Ahora</b> (" + esc(ahoraLocal.replace("T", " ")) + ")</span></label>" +
+      "<label class='check-fila'><input type='radio' name='oti-cuando' value='antes'> <span><b>Ya había empezado antes</b> — se me pasó presionar Empezar</span></label>" +
+      "<div id='oti-antes' class='hidden'>" +
+        "<label>Fecha y hora en que realmente empezó *</label><input id='oti-fecha' type='datetime-local' max='" + ahoraLocal + "'" + (minimo ? " min='" + minimo + "'" : "") + ">" +
+        "<label>¿Por qué se registra después? *</label><input id='oti-motivo' placeholder='Ej. No se presionó Empezar a tiempo'>" +
+        "<p class='ayuda'>Queda en la bitácora con la fecha real y el motivo.</p></div>",
+      async st => {
+        const antes = document.querySelector("input[name=oti-cuando]:checked").value === "antes";
+        const body = { id_ot: o.id_ot };
+        if (antes) {
+          const v = document.getElementById("oti-fecha").value;
+          if (!v) return msg(st, "❌ Escribe la fecha y hora en que empezó", "error");
+          body.inicio_real = new Date(v).toISOString();
+          body.motivo_inicio = document.getElementById("oti-motivo").value.trim();
+          if (body.motivo_inicio.length < 5) return msg(st, "❌ Escribe el motivo", "error");
+        }
+        const r = await api("iniciar_ot", body, "POST");
+        if (!r.ok) return msg(st, "❌ " + r.error, "error");
+        vibrar(60);
+        verDetalleOT(o.id_ot);
+      });
+    document.querySelectorAll("input[name=oti-cuando]").forEach(x => {
+      x.onchange = () => document.getElementById("oti-antes").classList.toggle("hidden", document.querySelector("input[name=oti-cuando]:checked").value !== "antes");
+    });
   }
 
   function formTerminarOT() {
